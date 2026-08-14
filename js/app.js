@@ -579,11 +579,27 @@ async function printCustomerStatement(cid){
   catch(e){ console.error(e); }
 }
 
+/** Load local vendor/html2canvas if not already present (no CDN / no network required). */
+function ensureHtml2CanvasLoaded(){
+  if(typeof html2canvas !== 'undefined') return Promise.resolve(true);
+  if(window.__baqeriH2cPromise) return window.__baqeriH2cPromise;
+  window.__baqeriH2cPromise = new Promise(function(resolve){
+    var s = document.createElement('script');
+    s.src = './vendor/html2canvas.min.js';
+    s.async = false;
+    s.onload = function(){ resolve(typeof html2canvas !== 'undefined'); };
+    s.onerror = function(){ resolve(false); };
+    document.head.appendChild(s);
+  });
+  return window.__baqeriH2cPromise;
+}
+
 async function exportInvoiceImage(invId){
   const inv = data.invoices.find(x=>x.id===invId);
   if(!inv) return;
-  if(typeof html2canvas === 'undefined'){
-    showToast('برای خروجی تصویر به اینترنت نیاز است (یک‌بار برای بارگذاری کتابخانه)');
+  const h2cOk = await ensureHtml2CanvasLoaded();
+  if(!h2cOk){
+    showToast('کتابخانه ساخت تصویر در دسترس نیست');
     return;
   }
   const cust = data.customers.find(x=>x.id===inv.customerId);
