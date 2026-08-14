@@ -7,7 +7,7 @@
  */
 'use strict';
 
-const CACHE_NAME = 'baqeri-shell-v2';
+const CACHE_NAME = 'baqeri-shell-v3';
 
 /** App Shell — paths relative to this SW (same directory as index.html). */
 const PRECACHE_URLS = [
