@@ -257,9 +257,10 @@ function exportExcel(){
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(invRows.length?invRows:[{'شماره فاکتور':''}]), 'فاکتورها');
 
   const prodRows = data.products.map(p=>({
-    'نام کالا': p.name, 'دسته‌بندی': p.category||'', 'قیمت خرید': p.buy,
+    'نام کالا': p.name, 'دسته‌بندی': p.category||'', 'قیمت خرید (FIFO)': Math.round(productFifoUnitCost(p.id)),
+    'قیمت خرید (مبنای پیش‌فرض)': p.buy,
     'قیمت عمده': p.wholesale, 'قیمت مصرف‌کننده': p.retail, 'موجودی': p.stockQty,
-    'ارزش ریالی موجودی': (p.stockQty||0)*(p.buy||0),
+    'ارزش ریالی موجودی (FIFO)': Math.round(productInventoryValue(p.id)),
   }));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(prodRows.length?prodRows:[{'نام کالا':''}]), 'کالاها');
 
