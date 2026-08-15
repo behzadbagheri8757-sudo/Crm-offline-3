@@ -1206,7 +1206,7 @@ function openInvoiceForm(cid, editInv){
     const lastAny = lastSaleAnyCustomer(prod.id);
     const lastCust = lastSaleToCustomer(prod.id);
     const sellRef = (prod.retail!=null && prod.retail!=='') ? prod.retail : (prod.sell||0);
-    // UI only: line total from same qty×price as invoice math; price panel hides existing refs (not removed)
+    // qty shown as plain string (no truncate); line total uses same qty×price as invoice math
     return `
       <div class="inv-row-meta">
         <div class="inv-row-line-total">${esc(String(qty))} × ${toman(unitPrice)} = <strong>${toman(lineAmt)} ت</strong></div>
@@ -1214,10 +1214,10 @@ function openInvoiceForm(cid, editInv){
         <button type="button" class="inv-price-info-btn" data-row="${idx}" aria-expanded="false">اطلاعات قیمت</button>
         <div class="inv-price-info-panel" data-row="${idx}" hidden>
           <div class="inv-price-info-grid">
-            <div><span class="k">خرید (FIFO)</span><span class="v">${toman(fifoCost)} ت</span></div>
-            <div><span class="k">قیمت فروش (مرجع)</span><span class="v">${toman(sellRef)} ت</span></div>
-            <div><span class="k">آخرین فروش (کلی)</span><span class="v">${lastAny?`${toman(lastAny.price)} ت — ${faDate(lastAny.date)}`:'ثبت نشده'}</span></div>
-            <div><span class="k">آخرین فروش به این مشتری</span><span class="v">${lastCust?`${toman(lastCust.price)} ت — ${faDate(lastCust.date)}`:'ثبت نشده'}</span></div>
+            <div class="inv-price-info-row"><span class="k">خرید (FIFO)</span><span class="v">${toman(fifoCost)} ت</span></div>
+            <div class="inv-price-info-row"><span class="k">قیمت فروش (مرجع)</span><span class="v">${toman(sellRef)} ت</span></div>
+            <div class="inv-price-info-row"><span class="k">آخرین فروش (کلی)</span><span class="v">${lastAny?`${toman(lastAny.price)} ت — ${faDate(lastAny.date)}`:'ثبت نشده'}</span></div>
+            <div class="inv-price-info-row"><span class="k">آخرین فروش به این مشتری</span><span class="v">${lastCust?`${toman(lastCust.price)} ت — ${faDate(lastCust.date)}`:'ثبت نشده'}</span></div>
           </div>
         </div>
       </div>
@@ -1244,24 +1244,25 @@ function openInvoiceForm(cid, editInv){
   function itemsHtml(){
     return rows.map((r,idx)=>{
       const prod = data.products.find(p=>p.id===r.productId);
+      const priceDisp = (typeof formatLiveAmount==='function' && r.price) ? formatLiveAmount(String(r.price)) : (r.price||'');
       return `
-      <div class="field" style="display:flex;gap:6px;align-items:end;position:relative;">
-        <div style="flex:2;position:relative;">
+      <div class="field inv-item-row">
+        <div class="inv-item-product">
           <label>جنس</label>
           <input type="text" class="row-product-search" data-row="${idx}" placeholder="جستجوی کالا..." autocomplete="off" value="${prod?esc(prod.name):''}">
           <div class="prod-drop" data-row="${idx}" style="display:none;position:absolute;top:100%;right:0;left:0;z-index:30;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;box-shadow:var(--shadow-md);max-height:220px;overflow-y:auto;"></div>
         </div>
-        <div style="flex:0 0 62px;">
+        <div class="inv-item-qty">
           <label>تعداد</label>
           <input type="text" inputmode="decimal" data-row="${idx}" class="row-qty" value="${r.qty}">
         </div>
-        <div style="flex:1.6;">
+        <div class="inv-item-price">
           <label>قیمت واحد</label>
-          <input type="text" inputmode="decimal" data-row="${idx}" class="row-price" style="font-size:1.05rem;font-weight:700;" value="${r.price}">
+          <input type="text" inputmode="decimal" data-row="${idx}" class="row-price" value="${esc(String(priceDisp))}">
         </div>
-        ${rows.length>1?`<div style="flex:0 0 auto;">
+        ${rows.length>1?`<div class="inv-item-del">
           <label>&nbsp;</label>
-          <button type="button" class="btn danger small row-del" data-row="${idx}" title="حذف این قلم" style="padding:10px 12px;">×</button>
+          <button type="button" class="btn danger small row-del" data-row="${idx}" title="حذف این قلم">×</button>
         </div>`:''}
       </div>
       <div class="row-info" data-row="${idx}">${rowInfoHtml(idx)}</div>
@@ -1369,7 +1370,12 @@ function openInvoiceForm(cid, editInv){
       const searchEl = document.querySelector(`.row-product-search[data-row="${idx}"]`);
       if(searchEl) searchEl.value = prod.name;
       const priceEl = document.querySelector(`.row-price[data-row="${idx}"]`);
-      if(priceEl) priceEl.value = rows[idx].price;
+      if(priceEl){
+        // display-only thousand separators; numeric value stays in rows[idx].price
+        priceEl.value = (typeof formatLiveAmount==='function')
+          ? formatLiveAmount(String(rows[idx].price))
+          : rows[idx].price;
+      }
       const dropEl = document.querySelector(`.prod-drop[data-row="${idx}"]`);
       if(dropEl) dropEl.style.display = 'none';
       updateRowInfo(idx);
@@ -1385,7 +1391,7 @@ function openInvoiceForm(cid, editInv){
         }
       }
       el.addEventListener('focus', ()=>{
-        // Re-open selector after product chosen: full list + select text so typing replaces name (no manual clear required)
+        // After product chosen: full list + select text so user can replace without manual clear
         if(rows[idx] && rows[idx].productId){
           try{ el.select(); }catch(e){}
           openDrop('');
@@ -1405,25 +1411,6 @@ function openInvoiceForm(cid, editInv){
         setTimeout(()=>{ if(dropEl) dropEl.style.display='none'; }, 150);
       });
     });
-    // Toggle price-info panels (UI only; data from same helpers as before)
-    document.querySelectorAll('.inv-price-info-btn').forEach(btn=>{
-      btn.addEventListener('click', e=>{
-        e.preventDefault();
-        e.stopPropagation();
-        const i = btn.getAttribute('data-row');
-        const panel = document.querySelector(`.inv-price-info-panel[data-row="${i}"]`);
-        if(!panel) return;
-        const open = panel.hasAttribute('hidden');
-        document.querySelectorAll('.inv-price-info-panel').forEach(p=>{
-          p.setAttribute('hidden','');
-        });
-        document.querySelectorAll('.inv-price-info-btn').forEach(b=>b.setAttribute('aria-expanded','false'));
-        if(open){
-          panel.removeAttribute('hidden');
-          btn.setAttribute('aria-expanded','true');
-        }
-      });
-    });
     document.querySelectorAll('.prod-drop').forEach(dropEl=>{
       dropEl.addEventListener('click', e=>{
         const item = e.target.closest('.prod-drop-item');
@@ -1433,6 +1420,30 @@ function openInvoiceForm(cid, editInv){
       // جلوگیری از این‌که خودِ کلیک روی لیست باعث blur زودهنگام input بشه
       dropEl.addEventListener('mousedown', e=> e.preventDefault());
     });
+
+    // Price-info toggle via delegation on modalRoot so it survives updateRowInfo()
+    // (New Invoice selects product → updateRowInfo replaces button DOM; direct bind would die.)
+    (function bindInvPriceInfoDelegation(){
+      const root = document.getElementById('modalRoot');
+      if(!root || root._invPriceInfoBound) return;
+      root._invPriceInfoBound = true;
+      root.addEventListener('click', function(e){
+        const btn = e.target.closest('.inv-price-info-btn');
+        if(!btn || !root.contains(btn)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const i = btn.getAttribute('data-row');
+        const panel = root.querySelector(`.inv-price-info-panel[data-row="${i}"]`);
+        if(!panel) return;
+        const willOpen = panel.hasAttribute('hidden');
+        root.querySelectorAll('.inv-price-info-panel').forEach(p=>p.setAttribute('hidden',''));
+        root.querySelectorAll('.inv-price-info-btn').forEach(b=>b.setAttribute('aria-expanded','false'));
+        if(willOpen){
+          panel.removeAttribute('hidden');
+          btn.setAttribute('aria-expanded','true');
+        }
+      });
+    })();
     document.querySelectorAll('.row-qty').forEach(el=>el.addEventListener('input', e=>{
       const idx = e.target.dataset.row;
       rows[idx].qty = parseFloat(faToEnDigits(e.target.value))||0;
