@@ -187,17 +187,19 @@ bootPage('dashboard', async function(){
   `;
 });
 
-/** Read-only UI for existing ProspectScout dailyTarget — no writes except ensure day-roll already in core. */
+/** Read-only UI for existing ProspectScout dailyTarget — no writes except ensure day-roll already in core.
+ *  Display gate (UI only): active progress only after at least one visit today (count >= 1).
+ *  Restore/backup may restore target>0 with count=0; keep compact/raw until first visit. */
 function renderDashboardTargetBar(dt){
-  // Compact strip when missing or zero — avoids a large empty card; logic unchanged.
-  if(!dt || !(Number(dt.target) > 0)){
+  const target = dt ? (Number(dt.target)||0) : 0;
+  const count = dt ? (Number(dt.count)||0) : 0;
+  // Compact/raw until first visit — independent of stored target value
+  if(!dt || target <= 0 || count < 1){
     return `<a class="dash-target dash-target-compact" href="./prospects.html">
       <span class="dash-target-title">تارگت امروز تنظیم نشده</span>
       <span class="dash-target-link">تنظیم ←</span>
     </a>`;
   }
-  const target = Number(dt.target)||0;
-  const count = Number(dt.count)||0;
   const pct = Math.min(100, Math.round((count/target)*100));
   const remain = Math.max(0, target - count);
   const done = count >= target;
