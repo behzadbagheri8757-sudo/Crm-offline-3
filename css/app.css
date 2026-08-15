@@ -574,7 +574,7 @@ main select,
   border-radius:var(--radius-sm);
   padding:10px 11px;
   box-shadow:var(--shadow-xs);
-  min-width:0; /* prevent grid blowout on long numbers */
+  min-width:0;
 }
 .dash-stat .label{
   font-size:.65rem;
@@ -584,26 +584,31 @@ main select,
   line-height:1.3;
 }
 .dash-stat .value{
-  font-size:clamp(1.05rem, 4.5vw, 1.28rem);
+  /* Prefer single-line financial figures; widen grid before shrinking type */
+  font-size:1.08rem;
   font-weight:800;
   color:var(--color-text);
-  letter-spacing:-.35px;
-  line-height:1.2;
-  word-break:break-word;
-  overflow-wrap:anywhere;
+  letter-spacing:-.3px;
+  line-height:1.25;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
   font-variant-numeric:tabular-nums;
 }
 .dash-stat.wide{grid-column:1/-1;}
 .dash-stat.wide .value{
-  font-size:clamp(1.12rem, 4.8vw, 1.35rem);
+  font-size:1.15rem;
 }
-@media (min-width:380px){
+/* Stay 2-col longer so long toman amounts fit one line on phones */
+@media (min-width:520px){
   .dash-stats{grid-template-columns:1fr 1fr 1fr; gap:9px;}
   .dash-stat.wide{grid-column:1/-1;}
 }
 @media (max-width:360px){
   .dash-stats{gap:7px;}
-  .dash-stat{padding:9px 9px;}
+  .dash-stat{padding:9px 8px;}
+  .dash-stat .value{font-size:1rem;}
+  .dash-stat.wide .value{font-size:1.08rem;}
 }
 
 .dash-section-label{
@@ -955,7 +960,7 @@ body[data-page="dashboard"] #nav{
   a.dash-tile{min-height:88px;padding:10px 6px;}
   a.dash-tile .dash-title{font-size:.72rem;}
   .card .value{font-size:.98rem;}
-  /* keep dash-stat .value from clamp() above — do not shrink financial KPIs */
+  /* dash-stat .value sized in dashboard block — keep single-line KPIs */
   main{padding:12px 10px calc(96px + var(--safe-bottom));}
 }
 @media (min-width:768px){
@@ -988,24 +993,15 @@ body.page-dashboard #nav{
 }
 
 /* ===================== BOTTOM NAVIGATION ===================== */
-/*
-  Pin to layout viewport bottom. JS (nav.js pinBottomNav) may adjust
-  `bottom` against visualViewport on mobile so the bar does not drift
-  mid-screen when the URL bar shows/hides. Do not put transform/filter
-  on ancestors of this element.
-*/
 .bottom-nav{
   position:fixed !important;
   top:auto !important;          /* reset any leftover top from generic rules */
-  left:0 !important;
-  right:0 !important;
-  bottom:0 !important;
+  left:0;
+  right:0;
+  bottom:0;
   height:auto;
   max-height:none;
   width:100%;
-  max-width:100%;
-  margin:0;
-  box-sizing:border-box;
   z-index:40;
   display:flex;
   align-items:stretch;
@@ -1019,8 +1015,6 @@ body.page-dashboard #nav{
   padding:6px 4px calc(6px + var(--safe-bottom));
   min-height:calc(56px + var(--safe-bottom));
   -webkit-overflow-scrolling:auto;
-  /* Isolate from document flow; avoid transform (containing-block issues). */
-  isolation:isolate;
 }
 .bottom-nav-item{
   flex:1 1 0;
@@ -1172,15 +1166,15 @@ a.dash-target{
   color:inherit;
   background:linear-gradient(135deg, #0B1F3A 0%, #143056 100%);
   color:#fff;
-  border-radius:14px;
-  padding:12px 14px;
-  margin:0 0 12px;
-  box-shadow:0 4px 14px rgba(11,31,58,.14);
+  border-radius:12px;
+  padding:8px 12px;
+  margin:0 0 10px;
+  box-shadow:0 3px 10px rgba(11,31,58,.12);
 }
 a.dash-target.is-done{
   background:linear-gradient(135deg, #178A63 0%, #20A879 100%);
 }
-/* Compact strip when target is unset / zero — no empty bulk */
+/* Compact/raw strip — before first visit of the day */
 a.dash-target.dash-target-compact{
   display:flex;
   align-items:center;
@@ -1212,29 +1206,30 @@ a.dash-target.dash-target-compact .dash-target-link{
   align-items:center;
   justify-content:space-between;
   gap:8px;
-  margin-bottom:4px;
+  margin-bottom:2px;
 }
 .dash-target-title{
-  font-size:.75rem;
+  font-size:.72rem;
   font-weight:700;
   opacity:.9;
 }
 .dash-target-pct{
-  font-size:.82rem;
+  font-size:.78rem;
   font-weight:800;
 }
 .dash-target-nums{
-  font-size:1.2rem;
+  font-size:1.05rem;
   font-weight:800;
   letter-spacing:-.3px;
-  margin-bottom:6px;
+  margin-bottom:4px;
+  line-height:1.2;
 }
 .dash-target-bar{
-  height:5px;
+  height:4px;
   border-radius:999px;
   background:rgba(255,255,255,.22);
   overflow:hidden;
-  margin-bottom:6px;
+  margin-bottom:4px;
 }
 .dash-target-bar > span{
   display:block;
@@ -1248,17 +1243,17 @@ a.dash-target.dash-target-compact .dash-target-link{
   align-items:center;
   justify-content:space-between;
   gap:8px;
-  font-size:.72rem;
+  font-size:.7rem;
   font-weight:600;
   opacity:.95;
 }
 .dash-target-link{
-  font-size:.72rem;
+  font-size:.7rem;
   opacity:.85;
   font-weight:600;
 }
 .dash-target-body{
-  font-size:.88rem;
+  font-size:.85rem;
   font-weight:700;
   margin-top:2px;
 }
