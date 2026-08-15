@@ -1197,21 +1197,29 @@ function openInvoiceForm(cid, editInv){
     if(!prod) return '';
     const fifoCost = productFifoUnitCost(prod.id);
     const qty = r.qty||0;
-    const profitPerUnit = (r.price||0) - fifoCost;
+    const unitPrice = r.price||0;
+    const lineAmt = qty * unitPrice;
+    const profitPerUnit = unitPrice - fifoCost;
     const profitTotal = profitPerUnit*qty;
     const pct = fifoCost ? Math.round((profitPerUnit/fifoCost)*100) : 0;
     const profitColor = profitTotal<0 ? 'var(--rust)' : 'var(--olive-dark)';
     const lastAny = lastSaleAnyCustomer(prod.id);
     const lastCust = lastSaleToCustomer(prod.id);
+    const sellRef = (prod.retail!=null && prod.retail!=='') ? prod.retail : (prod.sell||0);
+    // UI only: line total from same qty×price as invoice math; price panel hides existing refs (not removed)
     return `
-      <div class="sub" style="margin:-4px 0 4px;display:flex;flex-wrap:wrap;gap:2px 12px;">
-        <span>خرید (FIFO): ${toman(fifoCost)} ت</span>
-        <span style="color:${profitColor};font-weight:700;">سود این قلم: ${profitTotal<0?'−':''}${toman(Math.abs(profitTotal))} ت (${pct}٪)</span>
-      </div>
-      <div class="sub" style="margin:-4px 0 10px;">
-        آخرین فروش این کالا (کلی): ${lastAny?`${toman(lastAny.price)} ت — ${faDate(lastAny.date)}`:'ثبت نشده'}
-        &nbsp;|&nbsp;
-        آخرین فروش به این مشتری: ${lastCust?`${toman(lastCust.price)} ت — ${faDate(lastCust.date)}`:'ثبت نشده'}
+      <div class="inv-row-meta">
+        <div class="inv-row-line-total">${esc(String(qty))} × ${toman(unitPrice)} = <strong>${toman(lineAmt)} ت</strong></div>
+        <div class="inv-row-profit-line" style="color:${profitColor};">سود این قلم: ${profitTotal<0?'−':''}${toman(Math.abs(profitTotal))} ت (${pct}٪)</div>
+        <button type="button" class="inv-price-info-btn" data-row="${idx}" aria-expanded="false">اطلاعات قیمت</button>
+        <div class="inv-price-info-panel" data-row="${idx}" hidden>
+          <div class="inv-price-info-grid">
+            <div><span class="k">خرید (FIFO)</span><span class="v">${toman(fifoCost)} ت</span></div>
+            <div><span class="k">قیمت فروش (مرجع)</span><span class="v">${toman(sellRef)} ت</span></div>
+            <div><span class="k">آخرین فروش (کلی)</span><span class="v">${lastAny?`${toman(lastAny.price)} ت — ${faDate(lastAny.date)}`:'ثبت نشده'}</span></div>
+            <div><span class="k">آخرین فروش به این مشتری</span><span class="v">${lastCust?`${toman(lastCust.price)} ت — ${faDate(lastCust.date)}`:'ثبت نشده'}</span></div>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -1370,14 +1378,50 @@ function openInvoiceForm(cid, editInv){
     document.querySelectorAll('.row-product-search').forEach(el=>{
       const idx = el.dataset.row;
       const dropEl = document.querySelector(`.prod-drop[data-row="${idx}"]`);
-      function openDrop(){
-        if(dropEl){ dropEl.innerHTML = productDropItemsHtml(idx, el.value); dropEl.style.display = 'block'; }
+      function openDrop(query){
+        if(dropEl){
+          dropEl.innerHTML = productDropItemsHtml(idx, query);
+          dropEl.style.display = 'block';
+        }
       }
-      el.addEventListener('focus', openDrop);
-      el.addEventListener('input', openDrop);
+      el.addEventListener('focus', ()=>{
+        // Re-open selector after product chosen: full list + select text so typing replaces name (no manual clear required)
+        if(rows[idx] && rows[idx].productId){
+          try{ el.select(); }catch(e){}
+          openDrop('');
+        }else{
+          openDrop(el.value);
+        }
+      });
+      el.addEventListener('click', ()=>{
+        if(rows[idx] && rows[idx].productId){
+          try{ el.select(); }catch(e){}
+          openDrop('');
+        }
+      });
+      el.addEventListener('input', ()=>{ openDrop(el.value); });
       el.addEventListener('blur', ()=>{
         // تاخیر کوچک تا کلیک روی آیتم لیست، قبل از بسته‌شدن dropdown، به رویداد click برسه
         setTimeout(()=>{ if(dropEl) dropEl.style.display='none'; }, 150);
+      });
+    });
+    // Toggle price-info panels (UI only; data from same helpers as before)
+    document.querySelectorAll('.inv-price-info-btn').forEach(btn=>{
+      btn.addEventListener('click', e=>{
+        e.preventDefault();
+        e.stopPropagation();
+        const i = btn.getAttribute('data-row');
+        const panel = document.querySelector(`.inv-price-info-panel[data-row="${i}"]`);
+        if(!panel) return;
+        const open = panel.hasAttribute('hidden');
+        document.querySelectorAll('.inv-price-info-panel').forEach(p=>{
+          p.setAttribute('hidden','');
+        });
+        document.querySelectorAll('.inv-price-info-btn').forEach(b=>b.setAttribute('aria-expanded','false'));
+        if(open){
+          panel.removeAttribute('hidden');
+          btn.setAttribute('aria-expanded','true');
+        }
       });
     });
     document.querySelectorAll('.prod-drop').forEach(dropEl=>{
