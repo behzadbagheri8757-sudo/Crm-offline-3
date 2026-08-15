@@ -1231,9 +1231,13 @@ a.dash-target.is-done{
   min-width:0;
   position:relative;
 }
+.inv-item-product .row-product-search[readonly]{
+  cursor:pointer;
+  background:var(--color-surface);
+}
 .inv-item-qty{
   flex:0 0 auto;
-  width:5.25rem; /* fits 11.99 / 125.50 without clipping */
+  width:5.25rem;
   min-width:5.25rem;
 }
 .inv-item-price{
@@ -1250,106 +1254,122 @@ a.dash-target.is-done{
   font-variant-numeric:tabular-nums;
   text-align:center;
 }
-.inv-item-del{
-  flex:0 0 auto;
-}
-.inv-item-del .row-del{
-  padding:10px 12px;
-  min-width:44px;
-}
-.inv-row-meta{
-  margin:2px 0 12px;
-  padding:0 2px;
-}
+.inv-item-del{flex:0 0 auto;}
+.inv-item-del .row-del{padding:10px 12px; min-width:44px;}
+
+.inv-row-meta{margin:2px 0 12px; padding:0 2px;}
 .inv-row-line-total{
-  font-size:.95rem;
-  font-weight:800;
-  color:var(--color-text);
-  letter-spacing:-.2px;
-  line-height:1.4;
-  font-variant-numeric:tabular-nums;
-  /* never ellipsis qty×price — wrap only if extreme */
-  white-space:normal;
-  overflow-wrap:anywhere;
+  font-size:.95rem; font-weight:800; color:var(--color-text);
+  letter-spacing:-.2px; line-height:1.4; font-variant-numeric:tabular-nums;
+  white-space:normal; overflow-wrap:anywhere;
 }
-.inv-row-line-total strong{
-  font-weight:800;
-  color:var(--color-primary);
-}
-.inv-row-profit-line{
-  font-size:.72rem;
-  font-weight:600;
-  margin-top:2px;
-  line-height:1.35;
-}
+.inv-row-line-total strong{font-weight:800; color:var(--color-primary);}
+.inv-row-profit-line{font-size:.72rem; font-weight:600; margin-top:2px; line-height:1.35;}
 .inv-price-info-btn{
-  display:inline-flex;
-  align-items:center;
-  margin-top:6px;
-  padding:5px 10px;
-  border-radius:999px;
-  border:1px solid var(--color-border);
-  background:var(--color-surface);
-  color:var(--color-primary);
-  font-family:inherit;
-  font-size:.72rem;
-  font-weight:700;
-  cursor:pointer;
-  min-height:32px;
-  -webkit-tap-highlight-color:transparent;
-  position:relative;
-  z-index:2;
+  display:inline-flex; align-items:center; margin-top:6px; padding:5px 10px;
+  border-radius:999px; border:1px solid var(--color-border); background:var(--color-surface);
+  color:var(--color-primary); font-family:inherit; font-size:.72rem; font-weight:700;
+  cursor:pointer; min-height:32px; position:relative; z-index:2;
 }
-.inv-price-info-btn:active{background:var(--color-surface-2);}
-.inv-price-info-btn[aria-expanded="true"]{
-  background:var(--color-accent-soft);
-  border-color:var(--color-accent);
-}
+.inv-price-info-btn[aria-expanded="true"]{background:var(--color-accent-soft); border-color:var(--color-accent);}
 .inv-price-info-panel{
-  margin-top:8px;
-  padding:10px 12px;
-  border:1px solid var(--color-border);
-  border-radius:12px;
-  background:var(--color-surface-2);
-  box-sizing:border-box;
-  max-width:100%;
-  width:100%;
-  position:relative;
-  z-index:2;
+  margin-top:8px; padding:10px 12px; border:1px solid var(--color-border);
+  border-radius:12px; background:var(--color-surface-2); max-width:100%; width:100%;
+  position:relative; z-index:2;
 }
 .inv-price-info-panel[hidden]{display:none !important;}
-.inv-price-info-grid{
+.inv-price-info-grid{display:flex; flex-direction:column; gap:10px;}
+.inv-price-info-row{display:flex; flex-direction:column; gap:2px; font-size:.8rem; line-height:1.45;}
+.inv-price-info-row .k{color:var(--color-text-muted); font-weight:600;}
+.inv-price-info-row .v{font-weight:700; color:var(--color-text); font-variant-numeric:tabular-nums; word-break:break-word;}
+
+/* Product selector: fixed wide panel, sticky search, scroll list */
+.prod-drop{
+  display:none;
+  position:fixed;
+  z-index:120;
+  background:var(--color-surface);
+  border:1.5px solid var(--color-border);
+  border-radius:14px;
+  box-shadow:0 12px 40px rgba(11,31,58,.18);
+  overflow:hidden;
+  box-sizing:border-box;
+}
+.prod-drop.is-open,
+.prod-drop:not([hidden]){
+  display:flex !important;
+  flex-direction:column;
+}
+.prod-drop[hidden]{display:none !important;}
+.prod-drop-panel{
   display:flex;
   flex-direction:column;
-  gap:10px;
+  min-height:0;
+  max-height:inherit;
+  height:100%;
 }
-.inv-price-info-row{
+.prod-drop-search-wrap{
+  flex:0 0 auto;
+  padding:10px 10px 8px;
+  border-bottom:1px solid var(--color-border);
+  background:var(--color-surface);
+  position:sticky;
+  top:0;
+  z-index:1;
+}
+.prod-drop-search{
+  width:100%;
+  padding:11px 12px;
+  border:1.5px solid var(--color-border);
+  border-radius:11px;
+  font-family:inherit;
+  font-size:16px;
+  background:var(--color-surface-2);
+  box-sizing:border-box;
+  min-height:44px;
+}
+.prod-drop-search:focus{
+  outline:none;
+  border-color:var(--color-accent);
+  box-shadow:0 0 0 3px var(--color-accent-soft);
+}
+.prod-drop-list{
+  flex:1 1 auto;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  min-height:0;
+}
+.prod-drop-item{
   display:flex;
   flex-direction:column;
   align-items:stretch;
-  gap:2px;
-  font-size:.8rem;
-  line-height:1.45;
+  gap:3px;
+  padding:12px 14px;
+  border-bottom:1px solid var(--color-border);
+  cursor:pointer;
+  text-align:right;
 }
-.inv-price-info-row .k{
-  color:var(--color-text-muted);
-  font-weight:600;
-  white-space:normal;
-}
-.inv-price-info-row .v{
+.prod-drop-item:active{background:var(--color-surface-2);}
+.prod-drop-name{
+  font-size:.92rem;
   font-weight:700;
   color:var(--color-text);
-  font-variant-numeric:tabular-nums;
-  word-break:break-word;
+  line-height:1.35;
+}
+.prod-drop-stock{
+  font-size:.75rem;
+  font-weight:500;
+  color:var(--color-text-muted);
+  line-height:1.3;
+}
+.prod-drop-empty{
+  padding:20px 14px;
+  text-align:center;
+  color:var(--color-text-muted);
+  font-size:.85rem;
 }
 @media (min-width:480px){
-  .inv-price-info-row{
-    flex-direction:row;
-    justify-content:space-between;
-    align-items:baseline;
-    gap:12px;
-  }
-  .inv-price-info-row .v{text-align:left; flex-shrink:0;}
+  .inv-price-info-row{flex-direction:row; justify-content:space-between; align-items:baseline; gap:12px;}
   .inv-item-qty{width:5.5rem; min-width:5.5rem;}
   .inv-item-price{width:8rem; min-width:7rem;}
 }
