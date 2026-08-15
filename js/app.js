@@ -88,7 +88,7 @@ function renderProducts(main){
         <span class="name">${esc(p.name)}${p.category?` <span class="sub" style="display:inline;">(${esc(p.category)})</span>`:''}${isOff?' <span class="badge pending">غیرفعال</span>':''}</span>
         <span class="filler"></span>
         <span class="amount">موجودی: ${p.stockQty||0} ${low?'<span class="badge low">کم</span>':''}
-          <span class="sub">خرید ${toman(p.buy)} / عمده ${toman(p.wholesale)} / مصرف‌کننده ${toman(p.retail)}</span>
+          <span class="sub">خرید (FIFO) ${toman(productFifoUnitCost(p.id))} / عمده ${toman(p.wholesale)} / مصرف‌کننده ${toman(p.retail)}</span>
         </span>
       </div>`;
     }).join('');
@@ -305,7 +305,6 @@ function invoiceDocHtml(inv, cust, forPrint){
       <td style="text-align:right;">${esc(it.name)}</td>
       <td>${it.qty}</td>
       <td>${toman(it.price)}</td>
-      <td>${it.discount?toman(it.discount):'—'}</td>
       <td>${toman(it.qty*it.price-(it.discount||0))}</td>
     </tr>
   `).join('');
@@ -337,7 +336,7 @@ function invoiceDocHtml(inv, cust, forPrint){
         ${cust&&cust.address?`<div>آدرس: ${esc(cust.address)}</div>`:''}
       </div>
       <table class="inv-table">
-        <thead><tr><th>ردیف</th><th>شرح کالا</th><th>تعداد</th><th>قیمت واحد</th><th>تخفیف</th><th>مبلغ</th></tr></thead>
+        <thead><tr><th>ردیف</th><th>شرح کالا</th><th>تعداد</th><th>قیمت واحد</th><th>مبلغ</th></tr></thead>
         <tbody>${itemRows}</tbody>
       </table>
       <table class="inv-totals">
@@ -659,6 +658,7 @@ function openAddProduct(editId){
       <div style="flex:1;"><label>قیمت مصرف‌کننده</label><input id="f-retail" type="text" inputmode="decimal" value="${p?p.retail:''}"></div>
     </div>
     ${profitPct!==null?`<div class="empty" style="padding:0 0 8px;text-align:right;font-size:.8rem;">درصد سود تقریبی (نسبت به قیمت مصرف‌کننده): ${profitPct}٪</div>`:''}
+    ${p?`<div class="empty" style="padding:0 0 8px;text-align:right;font-size:.78rem;">قیمت خرید واقعی به روش FIFO الان: <b>${toman(productFifoUnitCost(p.id))} ت</b> (میانگین وزنی لایه‌های موجود در انبار — «قیمت خرید» بالا فقط مبنای پیش‌فرض برای خریدهای بدون قیمت مشخص است) — ارزش این کالا در انبار: <b>${toman(productInventoryValue(p.id))} ت</b></div>`:''}
 
     <h2 class="section-title">موجودی انبار</h2>
     <div class="field" style="display:flex;gap:8px;">
@@ -1096,11 +1096,11 @@ function openInvoiceDetail(invId, cid){
       مشتری: ${esc(cust?cust.name:'—')} &nbsp;|&nbsp; تاریخ: ${faDate(inv.date)}
     </div>
     <table>
-      <tr><th>ردیف</th><th>کالا</th><th>تعداد</th><th>قیمت واحد</th><th>تخفیف</th><th>جمع</th></tr>
+      <tr><th>ردیف</th><th>کالا</th><th>تعداد</th><th>قیمت واحد</th><th>جمع</th></tr>
       ${inv.items.map((it,idx)=>`
         <tr>
           <td>${idx+1}</td><td>${esc(it.name)}</td><td>${it.qty}</td>
-          <td>${toman(it.price)} ت</td><td>${it.discount?toman(it.discount)+' ت':'—'}</td>
+          <td>${toman(it.price)} ت</td>
           <td>${toman(it.qty*it.price-(it.discount||0))} ت</td>
         </tr>
       `).join('')}
@@ -1159,7 +1159,7 @@ function openInvoiceForm(cid, editInv){
   }
   let rows = editInv
     ? editInv.items.map(it=>({productId:it.productId, qty:it.qty, price:it.price, discount:it.discount||0, buyPrice:it.buyPrice}))
-    : [{productId:data.products[0].id, qty:1, price:data.products[0].retail||data.products[0].sell||0, discount:0}];
+    : [{productId:'', qty:1, price:0, discount:0}];
   const existingCheck = editInv ? data.checks.find(c=>c.invoiceId===editInv.id) : null;
   let cashPaid = editInv ? (editInv.cashPaid||0) : 0;
   let cardPaid = editInv ? (editInv.cardPaid||0) : 0;
@@ -1183,42 +1183,80 @@ function openInvoiceForm(cid, editInv){
     return past[0] || null;
   }
 
+  function lastSaleAnyCustomer(productId){
+    const past = data.invoices
+      .filter(inv=>!editInv || inv.id!==editInv.id)
+      .flatMap(inv=>inv.items.filter(it=>it.productId===productId).map(it=>({...it, date:inv.date})))
+      .sort((a,b)=>new Date(b.date)-new Date(a.date));
+    return past[0] || null;
+  }
+
+  function rowInfoHtml(idx){
+    const r = rows[idx];
+    const prod = data.products.find(p=>p.id===r.productId);
+    if(!prod) return '';
+    const fifoCost = productFifoUnitCost(prod.id);
+    const qty = r.qty||0;
+    const profitPerUnit = (r.price||0) - fifoCost;
+    const profitTotal = profitPerUnit*qty;
+    const pct = fifoCost ? Math.round((profitPerUnit/fifoCost)*100) : 0;
+    const profitColor = profitTotal<0 ? 'var(--rust)' : 'var(--olive-dark)';
+    const lastAny = lastSaleAnyCustomer(prod.id);
+    const lastCust = lastSaleToCustomer(prod.id);
+    return `
+      <div class="sub" style="margin:-4px 0 4px;display:flex;flex-wrap:wrap;gap:2px 12px;">
+        <span>خرید (FIFO): ${toman(fifoCost)} ت</span>
+        <span style="color:${profitColor};font-weight:700;">سود این قلم: ${profitTotal<0?'−':''}${toman(Math.abs(profitTotal))} ت (${pct}٪)</span>
+      </div>
+      <div class="sub" style="margin:-4px 0 10px;">
+        آخرین فروش این کالا (کلی): ${lastAny?`${toman(lastAny.price)} ت — ${faDate(lastAny.date)}`:'ثبت نشده'}
+        &nbsp;|&nbsp;
+        آخرین فروش به این مشتری: ${lastCust?`${toman(lastCust.price)} ت — ${faDate(lastCust.date)}`:'ثبت نشده'}
+      </div>
+    `;
+  }
+
+  function updateRowInfo(idx){
+    const el = document.querySelector(`.row-info[data-row="${idx}"]`);
+    if(el) el.innerHTML = rowInfoHtml(idx);
+  }
+
+  function productDropItemsHtml(idx, query){
+    const q = (query||'').trim();
+    const list = (q ? data.products.filter(p=>(p.name||'').includes(q)) : data.products).slice(0, 30);
+    if(!list.length) return `<div class="sub" style="padding:14px;text-align:center;">کالایی پیدا نشد</div>`;
+    return list.map(p=>`
+      <div class="prod-drop-item" data-row="${idx}" data-pid="${p.id}" style="padding:11px 14px;display:flex;justify-content:space-between;align-items:center;font-size:14px;border-bottom:1px solid var(--border);cursor:pointer;">
+        <span>${esc(p.name)}</span>
+        <span class="sub" style="margin:0;">موجودی: ${p.stockQty||0}</span>
+      </div>
+    `).join('');
+  }
+
   function itemsHtml(){
     return rows.map((r,idx)=>{
       const prod = data.products.find(p=>p.id===r.productId);
-      const lastSale = lastSaleToCustomer(r.productId);
-      const hintParts = [];
-      if(prod){
-        hintParts.push(`خرید شما: ${toman(prod.buy)} ت / عمده: ${toman(prod.wholesale)} ت / مصرف‌کننده: ${toman(prod.retail)} ت`);
-        hintParts.push(`موجودی انبار: ${prod.stockQty||0}`);
-      }
-      if(lastSale) hintParts.push(`آخرین فروش به این مشتری: ${toman(lastSale.price)} ت (${faDate(lastSale.date)}) — ${lastSale.qty} عدد`);
       return `
-      <div class="field" style="display:flex;gap:6px;align-items:end;">
-        <div style="flex:2;">
+      <div class="field" style="display:flex;gap:6px;align-items:end;position:relative;">
+        <div style="flex:2;position:relative;">
           <label>جنس</label>
-          <select data-row="${idx}" class="row-product">
-            ${data.products.map(p=>`<option value="${p.id}" ${p.id===r.productId?'selected':''}>${esc(p.name)}</option>`).join('')}
-          </select>
+          <input type="text" class="row-product-search" data-row="${idx}" placeholder="جستجوی کالا..." autocomplete="off" value="${prod?esc(prod.name):''}">
+          <div class="prod-drop" data-row="${idx}" style="display:none;position:absolute;top:100%;right:0;left:0;z-index:30;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;box-shadow:var(--shadow-md);max-height:220px;overflow-y:auto;"></div>
         </div>
-        <div style="flex:1;">
+        <div style="flex:0 0 62px;">
           <label>تعداد</label>
           <input type="text" inputmode="decimal" data-row="${idx}" class="row-qty" value="${r.qty}">
         </div>
-        <div style="flex:1;">
+        <div style="flex:1.6;">
           <label>قیمت واحد</label>
-          <input type="text" inputmode="decimal" data-row="${idx}" class="row-price" value="${r.price}">
-        </div>
-        <div style="flex:1;">
-          <label>تخفیف</label>
-          <input type="text" inputmode="decimal" data-row="${idx}" class="row-discount" value="${r.discount||''}">
+          <input type="text" inputmode="decimal" data-row="${idx}" class="row-price" style="font-size:1.05rem;font-weight:700;" value="${r.price}">
         </div>
         ${rows.length>1?`<div style="flex:0 0 auto;">
           <label>&nbsp;</label>
           <button type="button" class="btn danger small row-del" data-row="${idx}" title="حذف این قلم" style="padding:10px 12px;">×</button>
         </div>`:''}
       </div>
-      ${hintParts.length?`<div class="sub" style="margin:-6px 0 10px;">${hintParts.join(' — ')}</div>`:''}
+      <div class="row-info" data-row="${idx}">${rowInfoHtml(idx)}</div>
     `;
     }).join('');
   }
@@ -1229,19 +1267,36 @@ function openInvoiceForm(cid, editInv){
     return Math.max(0, subtotal - discountAmount);
   }
 
+  function invoiceProfitEstimate(){
+    const subtotal = rows.reduce((s,r)=>s+(r.qty*r.price-(r.discount||0)),0);
+    const discountAmount = discountType==='percent' ? subtotal*(discount||0)/100 : discount;
+    const itemsProfit = rows.reduce((s,r)=>{
+      if(!r.productId) return s;
+      const fifoCost = productFifoUnitCost(r.productId);
+      return s + ((r.price||0)-fifoCost)*(r.qty||0);
+    }, 0);
+    return itemsProfit - discountAmount;
+  }
+
   function updateSummary(){
     const total = invoiceTotal();
     const subtotal = rows.reduce((s,r)=>s+(r.qty*r.price-(r.discount||0)),0);
     const discountAmount = discountType==='percent' ? subtotal*(discount||0)/100 : discount;
     const paid = cashPaid+cardPaid+transferPaid+checkAmount;
     const newBalance = prevBalance + total - paid;
+    const profit = invoiceProfitEstimate();
+    const profitColor = profit<0 ? 'var(--rust)' : 'var(--olive-dark)';
     document.getElementById('calc-summary').innerHTML = `
       <div class="ledger-row"><span class="name">مانده قبلی مشتری</span><span class="filler"></span><span class="amount">${toman(prevBalance)} ت</span></div>
-      <div class="ledger-row"><span class="name">جمع اقلام (با تخفیف هر ردیف)</span><span class="filler"></span><span class="amount">${toman(subtotal)} ت</span></div>
+      <div class="ledger-row"><span class="name">جمع اقلام</span><span class="filler"></span><span class="amount">${toman(subtotal)} ت</span></div>
       <div class="ledger-row"><span class="name">تخفیف کلی فاکتور${discountType==='percent'?` (${toman(discount)}٪)`:''}</span><span class="filler"></span><span class="amount">${toman(discountAmount)} ت</span></div>
       <div class="ledger-row"><span class="name">جمع این فاکتور</span><span class="filler"></span><span class="amount">${toman(total)} ت</span></div>
       <div class="ledger-row"><span class="name">جمع دریافتی</span><span class="filler"></span><span class="amount">${toman(paid)} ت</span></div>
       <div class="ledger-row"><span class="name" style="color:${newBalance>0?'var(--rust)':'var(--olive-dark)'}">مانده جدید</span><span class="filler"></span><span class="amount" style="color:${newBalance>0?'var(--rust)':'var(--olive-dark)'}">${toman(Math.abs(newBalance))} ت ${balanceStatusWord(newBalance)}</span></div>
+      <div class="ledger-row" style="border-top:1.5px dashed var(--border);margin-top:6px;padding-top:10px;">
+        <span class="name" style="font-weight:700;">سود این فاکتور (بر اساس FIFO)</span><span class="filler"></span>
+        <span class="amount" style="color:${profitColor};font-weight:700;font-size:1.05rem;">${profit<0?'−':''}${toman(Math.abs(profit))} ت</span>
+      </div>
     `;
   }
 
@@ -1286,8 +1341,7 @@ function openInvoiceForm(cid, editInv){
     updateSummary();
 
     document.getElementById('add-row').addEventListener('click', ()=>{
-      const dp = data.products[0];
-      rows.push({productId:dp.id, qty:1, price:dp.retail||dp.sell||0, discount:0});
+      rows.push({productId:'', qty:1, price:0, discount:0});
       renderSheet();
     });
     document.querySelectorAll('.row-del').forEach(el=>el.addEventListener('click', e=>{
@@ -1297,24 +1351,54 @@ function openInvoiceForm(cid, editInv){
         renderSheet();
       }
     }));
-    document.querySelectorAll('.row-product').forEach(el=>el.addEventListener('change', e=>{
-      const i = e.target.dataset.row;
-      rows[i].productId = e.target.value;
-      delete rows[i].buyPrice;
-      const prod = data.products.find(p=>p.id===e.target.value);
-      rows[i].price = prod.retail||prod.sell||0;
-      renderSheet();
-    }));
+
+    function selectProduct(idx, productId){
+      const prod = data.products.find(p=>p.id===productId);
+      if(!prod) return;
+      rows[idx].productId = productId;
+      delete rows[idx].buyPrice;
+      rows[idx].price = prod.retail||prod.sell||0;
+      const searchEl = document.querySelector(`.row-product-search[data-row="${idx}"]`);
+      if(searchEl) searchEl.value = prod.name;
+      const priceEl = document.querySelector(`.row-price[data-row="${idx}"]`);
+      if(priceEl) priceEl.value = rows[idx].price;
+      const dropEl = document.querySelector(`.prod-drop[data-row="${idx}"]`);
+      if(dropEl) dropEl.style.display = 'none';
+      updateRowInfo(idx);
+      updateSummary();
+    }
+    document.querySelectorAll('.row-product-search').forEach(el=>{
+      const idx = el.dataset.row;
+      const dropEl = document.querySelector(`.prod-drop[data-row="${idx}"]`);
+      function openDrop(){
+        if(dropEl){ dropEl.innerHTML = productDropItemsHtml(idx, el.value); dropEl.style.display = 'block'; }
+      }
+      el.addEventListener('focus', openDrop);
+      el.addEventListener('input', openDrop);
+      el.addEventListener('blur', ()=>{
+        // تاخیر کوچک تا کلیک روی آیتم لیست، قبل از بسته‌شدن dropdown، به رویداد click برسه
+        setTimeout(()=>{ if(dropEl) dropEl.style.display='none'; }, 150);
+      });
+    });
+    document.querySelectorAll('.prod-drop').forEach(dropEl=>{
+      dropEl.addEventListener('click', e=>{
+        const item = e.target.closest('.prod-drop-item');
+        if(!item) return;
+        selectProduct(item.dataset.row, item.dataset.pid);
+      });
+      // جلوگیری از این‌که خودِ کلیک روی لیست باعث blur زودهنگام input بشه
+      dropEl.addEventListener('mousedown', e=> e.preventDefault());
+    });
     document.querySelectorAll('.row-qty').forEach(el=>el.addEventListener('input', e=>{
-      rows[e.target.dataset.row].qty = parseFloat(faToEnDigits(e.target.value))||0;
+      const idx = e.target.dataset.row;
+      rows[idx].qty = parseFloat(faToEnDigits(e.target.value))||0;
+      updateRowInfo(idx);
       updateSummary();
     }));
     document.querySelectorAll('.row-price').forEach(el=>el.addEventListener('input', e=>{
-      rows[e.target.dataset.row].price = parseFloat(faToEnDigits(e.target.value))||0;
-      updateSummary();
-    }));
-    document.querySelectorAll('.row-discount').forEach(el=>el.addEventListener('input', e=>{
-      rows[e.target.dataset.row].discount = parseFloat(faToEnDigits(e.target.value))||0;
+      const idx = e.target.dataset.row;
+      rows[idx].price = parseFloat(faToEnDigits(e.target.value))||0;
+      updateRowInfo(idx);
       updateSummary();
     }));
     document.getElementById('f-cash').addEventListener('input', e=>{ cashPaid = parseFloat(faToEnDigits(e.target.value))||0; updateSummary(); });
@@ -1340,6 +1424,14 @@ function openInvoiceForm(cid, editInv){
       if(btn.disabled) return; // جلوگیری از ثبت دوباره با کلیک سریع/پی‌درپی
       btn.disabled = true;
       const date = document.getElementById('f-date').value || todayISO();
+
+      // اعتبارسنجی: هر ردیف باید جنس مشخصی داشته باشه (چون فیلد جستجو دیگه پیش‌فرض نداره)
+      const noProductRow = rows.find(r=> !r.productId || !data.products.find(p=>p.id===r.productId));
+      if(noProductRow){
+        alert('برای هر ردیف باید یک جنس از لیست انتخاب کنی.');
+        btn.disabled = false;
+        return;
+      }
 
       // اعتبارسنجی مقادیر ردیف‌های فاکتور قبل از ذخیره: تعداد باید بزرگ‌تر از صفر، قیمت/تخفیف نباید منفی باشند
       const invalidRow = rows.find(r=> !(r.qty>0) || r.price<0 || (r.discount||0)<0);
@@ -2458,10 +2550,12 @@ function openSupplierDetail(sid){
         const invVal = inventoryValue();
         rec(assert(typeof invVal==='number' && isFinite(invVal) && invVal>=0, 'Inventory valuation >= 0', 'v='+invVal));
 
-        // recompute inventory value manually for QA products + all
+        // recompute inventory value manually for QA products + all — independent FIFO-layer sum
+        // (NOT sum(stock*buy): once a purchase's cost differs from the product's static
+        // "buy" field, that comparison is no longer valid under FIFO valuation)
         let manual = 0;
-        data.products.forEach(p=>{ manual += (p.stockQty||0)*(p.buy||0); });
-        rec(assert(approxEq(invVal, manual), 'Inventory valuation matches sum(stock*buy)',
+        (data.inventoryLayers||[]).forEach(l=>{ if(l.status==='open') manual += (l.qtyRemaining||0)*(l.unitCost||0); });
+        rec(assert(approxEq(invVal, manual), 'Inventory valuation matches independent FIFO-layer sum',
           'got='+invVal+' manual='+manual));
 
         // global profit should equal sum of customerProfit

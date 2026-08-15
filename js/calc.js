@@ -155,6 +155,24 @@ function supplierTotals(sid){
   return { purchaseTotal, payTotal, returnTotal, openingBalance, balance: openingBalance + purchaseTotal - payTotal - returnTotal };
 }
 
+// قیمت خرید یک کالا به روش FIFO: میانگین وزنیِ لایه‌های باز (چیزی که واقعاً در انبار مانده و نوبت مصرفشه).
+// اگر کالا هیچ لایه‌ی بازی نداشته باشه (هنوز خریدی/ورودی ثبت نشده)، برمی‌گرده به فیلد دستی p.buy.
+function productFifoUnitCost(pid){
+  const layers = (data.inventoryLayers||[]).filter(l=>l.productId===pid && l.status==='open' && (l.qtyRemaining||0)>0);
+  if(!layers.length){
+    const prod = data.products.find(p=>p.id===pid);
+    return prod ? (prod.buy||0) : 0;
+  }
+  const qty = layers.reduce((s,l)=>s+(l.qtyRemaining||0),0);
+  const val = layers.reduce((s,l)=>s+(l.qtyRemaining||0)*(l.unitCost||0),0);
+  return qty>0 ? val/qty : 0;
+}
+// ارزش ریالی موجودی یک کالای مشخص، از لایه‌های FIFO باز (زیرمجموعه‌ی همون چیزی که inventoryValue() جمع می‌زنه)
+function productInventoryValue(pid){
+  return (data.inventoryLayers||[]).filter(l=>l.productId===pid && l.status==='open')
+    .reduce((s,l)=>s+(l.qtyRemaining||0)*(l.unitCost||0), 0);
+}
+
 function inventoryValue(){
   // FIFO: ارزش انبار از لایه‌های قابل مصرف (open + qtyRemaining>0)
   const layers = (data.inventoryLayers||[]);

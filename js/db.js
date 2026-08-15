@@ -139,6 +139,56 @@ function migrateBuildInventoryLayers(d){
   return layers;
 }
 
+// ---------- Migration-gap reconciliation (idempotent, runs on every load) ----------
+// شکاف بین stockQty فعلی و مجموع لایه‌های FIFO باز را با یک لایه‌ی شفاف و ردیابی‌پذیر
+// (source:'migration-gap') پر می‌کند — برای موجودی‌ای که سابقه‌ی خرید واقعی در سیستم
+// FIFO ندارد (مثلاً «موجودی اولیه»ای که قبل از فعال‌شدن FIFO، مستقیم روی stockQty
+// ثبت شده بود و migrateBuildInventoryLayers چون فقط از supplier.purchases می‌خونه،
+// اصلاً نمی‌بینتش). لایه‌های خرید واقعی و allocationهای فروش قبلی هرگز دست نمی‌خورند؛
+// این تابع فقط زمانی که stockQty > مجموع لایه‌های باز باشه یک لایه‌ی جدید اضافه می‌کنه —
+// idempotent است چون هر بار gap واقعیِ لحظه رو از روی داده‌ی فعلی حساب می‌کنه، نه یک پرچمِ
+// «قبلاً اجرا شده».
+function earliestKnownDateForProduct(prod){
+  const dates = [];
+  (prod.priceHistory||[]).forEach(h=>{ if(h.date) dates.push(h.date); });
+  (prod.stockLog||[]).forEach(l=>{ if(l.date) dates.push(l.date); });
+  dates.sort();
+  return dates.length ? dates[0] : '2000-01-01';
+}
+function reconcileMissingInventoryLayers(d){
+  const EPS = 1e-6;
+  if(!d.inventoryLayers) d.inventoryLayers = [];
+  (d.products||[]).forEach(prod=>{
+    const stock = Number(prod.stockQty)||0;
+    const openLayers = d.inventoryLayers.filter(l=>l.productId===prod.id && l.status==='open' && (l.qtyRemaining||0)>0);
+    const openQty = openLayers.reduce((s,l)=>s+(l.qtyRemaining||0),0);
+    const gap = stock - openQty;
+    if(gap <= EPS) return; // چیزی کم نیست (یا لایه‌ها از stock بیشترن — کار migrateBuildInventoryLayers است، نه این تابع)
+    let unitCost;
+    if(openLayers.length){
+      // میانگین وزنی لایه‌های باز همین کالا: دقیق‌تر از fallback چون از خرید واقعی همین کالا می‌آد
+      const val = openLayers.reduce((s,l)=>s+(l.qtyRemaining||0)*(l.unitCost||0),0);
+      unitCost = openQty>0 ? val/openQty : (prod.buy||0);
+    } else {
+      // هیچ خرید واقعی‌ای برای این کالا در سیستم FIFO ثبت نشده — تنها مبنای موجود، قیمت خرید دستی است
+      unitCost = prod.buy||0;
+    }
+    d.inventoryLayers.push({
+      id: (typeof uid==='function'?uid():('L'+Math.random().toString(36).slice(2))),
+      purchaseId: null,
+      productId: prod.id,
+      itemId: null,
+      qtyOriginal: gap,
+      qtyRemaining: gap,
+      unitCost: unitCost,
+      status: 'open',
+      source: 'migration-gap',
+      date: earliestKnownDateForProduct(prod),
+      note: 'موجودی بدون سابقه‌ی خرید در FIFO (اصلاح خودکار شکاف Migration)',
+    });
+  });
+}
+
 function normalizeData(parsed){
   const d = emptyData();
   if(!parsed || typeof parsed !== 'object') return d;
@@ -229,6 +279,7 @@ function normalizeData(parsed){
   } else {
     d.inventoryLayers = migrateBuildInventoryLayers(d);
   }
+  reconcileMissingInventoryLayers(d);
 
   // invoice item costAllocations preserved when present (no rewrite of historical buyPrice)
   d.invoices = d.invoices.map((inv, idx)=>{
