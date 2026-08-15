@@ -1228,6 +1228,10 @@ function openInvoiceForm(cid, editInv){
     if(el) el.innerHTML = rowInfoHtml(idx);
   }
 
+  // Product selector state (one open at a time) — UI only
+  let prodDropOpenRow = null;
+  let prodDropOpening = false;
+
   function productDropListHtml(idx, query){
     const q = (query||'').trim();
     const list = (q ? data.products.filter(p=>(p.name||'').includes(q)) : data.products).slice(0, 40);
@@ -1239,17 +1243,15 @@ function openInvoiceForm(cid, editInv){
       </div>
     `).join('');
   }
-  function productDropPanelHtml(idx, query){
-    const q = query||'';
+  function productDropPanelHtml(idx){
     return `
       <div class="prod-drop-panel">
         <div class="prod-drop-search-wrap">
-          <input type="text" class="prod-drop-search" data-row="${idx}" placeholder="جستجوی کالا..." value="${esc(q)}" autocomplete="off">
+          <input type="search" class="prod-drop-search" data-row="${idx}" placeholder="جستجوی کالا..." value="" autocomplete="off" enterkeyhint="search">
         </div>
-        <div class="prod-drop-list">${productDropListHtml(idx, q)}</div>
+        <div class="prod-drop-list">${productDropListHtml(idx, '')}</div>
       </div>`;
   }
-  /** legacy name kept for any residual callers */
   function productDropItemsHtml(idx, query){
     return productDropListHtml(idx, query);
   }
@@ -1258,12 +1260,12 @@ function openInvoiceForm(cid, editInv){
     return rows.map((r,idx)=>{
       const prod = data.products.find(p=>p.id===r.productId);
       const priceDisp = (typeof formatLiveAmount==='function' && r.price) ? formatLiveAmount(String(r.price)) : (r.price||'');
-      const hasProd = !!r.productId;
+      const label = prod ? esc(prod.name) : '';
       return `
       <div class="field inv-item-row">
         <div class="inv-item-product">
           <label>جنس</label>
-          <input type="text" class="row-product-search" data-row="${idx}" placeholder="جستجوی کالا..." autocomplete="off" value="${prod?esc(prod.name):''}" ${hasProd?'readonly':''}>
+          <input type="text" class="row-product-search" data-row="${idx}" placeholder="انتخاب کالا..." autocomplete="off" readonly value="${label}" inputmode="none">
           <div class="prod-drop" data-row="${idx}" hidden></div>
         </div>
         <div class="inv-item-qty">
@@ -1376,56 +1378,76 @@ function openInvoiceForm(cid, editInv){
     }));
 
     function closeAllProductDrops(){
+      prodDropOpenRow = null;
+      prodDropOpening = false;
       document.querySelectorAll('.prod-drop').forEach(d=>{
         d.hidden = true;
         d.classList.remove('is-open');
         d.innerHTML = '';
-        d.style.top = '';
-        d.style.bottom = '';
-        d.style.maxHeight = '';
+        d.style.top = d.style.bottom = d.style.maxHeight = d.style.left = d.style.right = '';
       });
     }
     function positionProductDrop(dropEl, anchorEl){
       if(!dropEl || !anchorEl) return;
-      const rect = anchorEl.getBoundingClientRect();
       const margin = 10;
-      const spaceBelow = window.innerHeight - rect.bottom - margin;
-      const spaceAbove = rect.top - margin;
+      const rect = anchorEl.getBoundingClientRect();
+      const vv = window.visualViewport;
+      const vh = vv ? vv.height : window.innerHeight;
+      const vTop = vv ? vv.offsetTop : 0;
+      // Height cap: ~38% viewport, max 300px, min 180px
+      const maxH = Math.min(300, Math.max(180, Math.round(vh * 0.38)));
       dropEl.style.left = margin + 'px';
       dropEl.style.right = margin + 'px';
       dropEl.style.width = 'auto';
-      const preferBelow = spaceBelow >= 200 || spaceBelow >= spaceAbove;
-      if(preferBelow){
-        const h = Math.min(340, Math.max(160, spaceBelow));
+      dropEl.style.maxHeight = maxH + 'px';
+      const spaceBelow = (vTop + vh) - rect.bottom - 8;
+      const spaceAbove = rect.top - vTop - 8;
+      if(spaceBelow >= Math.min(maxH, 200) || spaceBelow >= spaceAbove){
         dropEl.style.top = (rect.bottom + 4) + 'px';
         dropEl.style.bottom = 'auto';
-        dropEl.style.maxHeight = h + 'px';
+        if(spaceBelow < maxH) dropEl.style.maxHeight = Math.max(160, spaceBelow) + 'px';
       }else{
-        const h = Math.min(340, Math.max(160, spaceAbove));
         dropEl.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
         dropEl.style.top = 'auto';
-        dropEl.style.maxHeight = h + 'px';
+        if(spaceAbove < maxH) dropEl.style.maxHeight = Math.max(160, spaceAbove) + 'px';
       }
     }
-    function openProductDrop(idx, query){
-      const dropEl = document.querySelector(`.prod-drop[data-row="${idx}"]`);
-      const anchor = document.querySelector(`.row-product-search[data-row="${idx}"]`);
-      if(!dropEl || !anchor) return;
-      closeAllProductDrops();
-      dropEl.innerHTML = productDropPanelHtml(idx, query||'');
-      dropEl.hidden = false;
-      dropEl.classList.add('is-open');
-      positionProductDrop(dropEl, anchor);
-      const search = dropEl.querySelector('.prod-drop-search');
-      if(search){
-        search.addEventListener('input', ()=>{
-          const list = dropEl.querySelector('.prod-drop-list');
-          if(list) list.innerHTML = productDropListHtml(idx, search.value);
+    function openProductDrop(idx){
+      idx = String(idx);
+      // Already open for this row → do not rebuild
+      if(prodDropOpenRow === idx){
+        const existing = document.querySelector(`.prod-drop[data-row="${idx}"]`);
+        if(existing && existing.classList.contains('is-open') && !existing.hidden) return;
+      }
+      if(prodDropOpening) return;
+      prodDropOpening = true;
+      try{
+        const dropEl = document.querySelector(`.prod-drop[data-row="${idx}"]`);
+        const anchor = document.querySelector(`.row-product-search[data-row="${idx}"]`);
+        if(!dropEl || !anchor) return;
+        // Close others first
+        document.querySelectorAll('.prod-drop').forEach(d=>{
+          if(d === dropEl) return;
+          d.hidden = true;
+          d.classList.remove('is-open');
+          d.innerHTML = '';
         });
-        // focus search only when row has no product yet (empty row needs type-to-filter)
-        if(!(rows[idx] && rows[idx].productId)){
-          setTimeout(()=>{ try{ search.focus(); }catch(e){} }, 30);
+        dropEl.innerHTML = productDropPanelHtml(idx);
+        dropEl.hidden = false;
+        dropEl.classList.add('is-open');
+        positionProductDrop(dropEl, anchor);
+        prodDropOpenRow = idx;
+        const search = dropEl.querySelector('.prod-drop-search');
+        const list = dropEl.querySelector('.prod-drop-list');
+        if(search && list){
+          // Keyboard only when user taps search — no auto-focus
+          search.addEventListener('input', ()=>{
+            list.innerHTML = productDropListHtml(idx, search.value);
+          });
         }
+      }finally{
+        // Release re-entry guard after gesture settles
+        setTimeout(()=>{ prodDropOpening = false; }, 120);
       }
     }
     function selectProduct(idx, productId){
@@ -1449,31 +1471,27 @@ function openInvoiceForm(cid, editInv){
       updateRowInfo(idx);
       updateSummary();
     }
-    document.querySelectorAll('.row-product-search').forEach(el=>{
-      const idx = el.dataset.row;
-      // Selected product: readonly → tap opens list without system keyboard on the row field
-      if(rows[idx] && rows[idx].productId) el.readOnly = true;
-      else el.readOnly = false;
 
-      el.addEventListener('click', e=>{
+    // Single gesture open via pointerup (avoids focus+click double-open on mobile)
+    document.querySelectorAll('.row-product-search').forEach(el=>{
+      el.readOnly = true;
+      el.setAttribute('inputmode', 'none');
+      el.addEventListener('pointerup', function(e){
         e.preventDefault();
-        openProductDrop(idx, rows[idx] && rows[idx].productId ? '' : el.value);
+        openProductDrop(el.getAttribute('data-row'));
       });
-      el.addEventListener('focus', ()=>{
-        openProductDrop(idx, rows[idx] && rows[idx].productId ? '' : el.value);
-      });
-      // Typing on empty (non-readonly) row still filters via panel search focus
-      el.addEventListener('input', ()=>{
-        if(el.readOnly) return;
-        openProductDrop(idx, el.value);
+      // Prevent keyboard / native focus behavior on the display field
+      el.addEventListener('focus', function(e){
+        e.preventDefault();
+        try{ el.blur(); }catch(err){}
+        openProductDrop(el.getAttribute('data-row'));
       });
     });
 
-    // Product list: pick item; keep panel open interactions without closing sheet
     document.querySelectorAll('.prod-drop').forEach(dropEl=>{
       dropEl.addEventListener('mousedown', e=>{
-        // allow focusing internal search; prevent row-field blur races
-        if(e.target.classList && e.target.classList.contains('prod-drop-search')) return;
+        // Allow focusing internal search; block only for list items
+        if(e.target.closest('.prod-drop-search')) return;
         e.preventDefault();
       });
       dropEl.addEventListener('click', e=>{
@@ -1481,24 +1499,21 @@ function openInvoiceForm(cid, editInv){
         if(!item) return;
         e.preventDefault();
         e.stopPropagation();
-        selectProduct(item.dataset.row, item.dataset.pid);
+        selectProduct(item.getAttribute('data-row'), item.getAttribute('data-pid'));
       });
     });
 
-    // Close product drop when tapping outside (not on search field / drop)
+    // Outside tap closes (once per document)
     if(!document._invProdDropOutsideBound){
       document._invProdDropOutsideBound = true;
-      document.addEventListener('click', function(e){
+      document.addEventListener('pointerdown', function(e){
         if(e.target.closest('.prod-drop') || e.target.closest('.row-product-search')) return;
-        document.querySelectorAll('.prod-drop.is-open').forEach(d=>{
-          d.hidden = true;
-          d.classList.remove('is-open');
-          d.innerHTML = '';
-        });
+        if(prodDropOpenRow == null) return;
+        closeAllProductDrops();
       }, true);
     }
 
-    // Price-info toggle (delegation survives updateRowInfo after product select)
+    // Price-info panel: delegation survives updateRowInfo()
     (function bindInvPriceInfoDelegation(){
       const root = document.getElementById('modalRoot');
       if(!root || root._invPriceInfoBound) return;
