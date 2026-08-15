@@ -189,26 +189,15 @@ bootPage('dashboard', async function(){
 
 /** Read-only UI for existing ProspectScout dailyTarget — no writes except ensure day-roll already in core. */
 function renderDashboardTargetBar(dt){
-  if(!dt){
-    return `<a class="dash-target" href="./prospects.html">
-      <div class="dash-target-top">
-        <span class="dash-target-title">تارگت امروز</span>
-        <span class="dash-target-link">ارزیابی مغازه‌ها ←</span>
-      </div>
-      <div class="dash-target-body">تارگت هنوز تنظیم نشده</div>
+  // Compact strip when missing or zero — avoids a large empty card; logic unchanged.
+  if(!dt || !(Number(dt.target) > 0)){
+    return `<a class="dash-target dash-target-compact" href="./prospects.html">
+      <span class="dash-target-title">تارگت امروز تنظیم نشده</span>
+      <span class="dash-target-link">تنظیم ←</span>
     </a>`;
   }
   const target = Number(dt.target)||0;
   const count = Number(dt.count)||0;
-  if(target <= 0){
-    return `<a class="dash-target" href="./prospects.html">
-      <div class="dash-target-top">
-        <span class="dash-target-title">تارگت امروز</span>
-        <span class="dash-target-link">تنظیم در ارزیابی مغازه‌ها ←</span>
-      </div>
-      <div class="dash-target-body">تارگت روزانه تنظیم نشده</div>
-    </a>`;
-  }
   const pct = Math.min(100, Math.round((count/target)*100));
   const remain = Math.max(0, target - count);
   const done = count >= target;
