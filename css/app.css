@@ -1219,8 +1219,46 @@ a.dash-target.is-done{
 
 
 /* ===================== INVOICE FORM ROW (UI only) ===================== */
+.inv-item-row{
+  display:flex;
+  gap:6px;
+  align-items:flex-end;
+  position:relative;
+  flex-wrap:nowrap;
+}
+.inv-item-product{
+  flex:1 1 auto;
+  min-width:0;
+  position:relative;
+}
+.inv-item-qty{
+  flex:0 0 auto;
+  width:5.25rem; /* fits 11.99 / 125.50 without clipping */
+  min-width:5.25rem;
+}
+.inv-item-price{
+  flex:0 0 auto;
+  width:7.25rem;
+  min-width:6.5rem;
+}
+.inv-item-price .row-price{
+  font-size:1.02rem;
+  font-weight:700;
+  font-variant-numeric:tabular-nums;
+}
+.inv-item-qty .row-qty{
+  font-variant-numeric:tabular-nums;
+  text-align:center;
+}
+.inv-item-del{
+  flex:0 0 auto;
+}
+.inv-item-del .row-del{
+  padding:10px 12px;
+  min-width:44px;
+}
 .inv-row-meta{
-  margin:-2px 0 12px;
+  margin:2px 0 12px;
   padding:0 2px;
 }
 .inv-row-line-total{
@@ -1228,11 +1266,11 @@ a.dash-target.is-done{
   font-weight:800;
   color:var(--color-text);
   letter-spacing:-.2px;
-  line-height:1.35;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  line-height:1.4;
   font-variant-numeric:tabular-nums;
+  /* never ellipsis qty×price — wrap only if extreme */
+  white-space:normal;
+  overflow-wrap:anywhere;
 }
 .inv-row-line-total strong{
   font-weight:800;
@@ -1259,6 +1297,8 @@ a.dash-target.is-done{
   cursor:pointer;
   min-height:32px;
   -webkit-tap-highlight-color:transparent;
+  position:relative;
+  z-index:2;
 }
 .inv-price-info-btn:active{background:var(--color-surface-2);}
 .inv-price-info-btn[aria-expanded="true"]{
@@ -1273,39 +1313,50 @@ a.dash-target.is-done{
   background:var(--color-surface-2);
   box-sizing:border-box;
   max-width:100%;
+  width:100%;
+  position:relative;
+  z-index:2;
 }
 .inv-price-info-panel[hidden]{display:none !important;}
 .inv-price-info-grid{
-  display:grid;
-  grid-template-columns:1fr;
-  gap:8px;
-}
-.inv-price-info-grid > div{
   display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
+  flex-direction:column;
   gap:10px;
-  font-size:.78rem;
-  line-height:1.4;
 }
-.inv-price-info-grid .k{
+.inv-price-info-row{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:2px;
+  font-size:.8rem;
+  line-height:1.45;
+}
+.inv-price-info-row .k{
   color:var(--color-text-muted);
   font-weight:600;
-  flex:1;
-  min-width:0;
+  white-space:normal;
 }
-.inv-price-info-grid .v{
+.inv-price-info-row .v{
   font-weight:700;
   color:var(--color-text);
-  text-align:left;
-  flex-shrink:0;
   font-variant-numeric:tabular-nums;
+  word-break:break-word;
 }
-@media (min-width:420px){
-  .inv-price-info-grid{grid-template-columns:1fr 1fr;}
+@media (min-width:480px){
+  .inv-price-info-row{
+    flex-direction:row;
+    justify-content:space-between;
+    align-items:baseline;
+    gap:12px;
+  }
+  .inv-price-info-row .v{text-align:left; flex-shrink:0;}
+  .inv-item-qty{width:5.5rem; min-width:5.5rem;}
+  .inv-item-price{width:8rem; min-width:7rem;}
 }
 @media (max-width:360px){
-  .inv-row-line-total{font-size:.88rem;}
+  .inv-item-qty{width:4.85rem; min-width:4.85rem;}
+  .inv-item-price{width:6.4rem; min-width:6.2rem;}
+  .inv-row-line-total{font-size:.9rem;}
 }
 
 /* ===================== APP BACK (header, internal pages) ===================== */
