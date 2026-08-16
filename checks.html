@@ -133,15 +133,23 @@ function drawChecksPage(){
     document.getElementById('check-list').addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-toggle-check]');
       if(!btn) return;
+      if(btn.disabled) return;
       e.preventDefault();
       e.stopPropagation();
       const id = btn.getAttribute('data-toggle-check');
       const chk = data.checks.find(x => x.id === id);
       if(!chk) return;
+      btn.disabled = true;
+      const prev = chk.status;
       chk.status = chk.status === 'cleared' ? 'pending' : 'cleared';
-      await saveData();
-      showToast(chk.status === 'cleared' ? 'چک وصول شد' : 'چک به حالت در جریان برگشت');
-      renderCheckListOnly();
+      try{
+        await saveData();
+        showToast(chk.status === 'cleared' ? 'چک وصول شد' : 'چک به حالت در جریان برگشت');
+        renderCheckListOnly();
+      }catch(err){
+        chk.status = prev;
+        try{ btn.disabled = false; }catch(_e){}
+      }
     });
   }
   renderCheckListOnly();
