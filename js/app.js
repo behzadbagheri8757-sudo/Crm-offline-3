@@ -1,6 +1,20 @@
 /* app.js — screens, forms, navigation, init, QA
    Phase 0 extract: no logic changes. Depends on models/db/calc/stock/payments/backup/ui.
 */
+// ---------- submit guard (double-tap on mobile) ----------
+/** Disable mutation button for one run; re-enable only on failure/validation abort. */
+async function withSubmitGuard(btn, fn){
+  if(!btn){ await fn(); return; }
+  if(btn.disabled) return;
+  btn.disabled = true;
+  try{
+    await fn();
+  }catch(e){
+    console.error(e);
+    try{ btn.disabled = false; }catch(_e){}
+  }
+}
+
 // ---------- render ----------
 const tabs = [
   {id:'dashboard', label:'داشبورد'},
@@ -738,32 +752,40 @@ function openAddProduct(editId){
     }
   }
 
-  document.getElementById('save-product').addEventListener('click', async ()=>{
-    const saved = await persist();
-    if(!saved) return;
-    closeModal(); render(); showToast('ذخیره شد');
+  document.getElementById('save-product').addEventListener('click', async (e)=>{
+    await withSubmitGuard(e.currentTarget, async ()=>{
+      const saved = await persist();
+      if(!saved) throw new Error('validation');
+      closeModal(); render(); showToast('ذخیره شد');
+    });
   });
   if(p){
-    document.getElementById('toggle-product-active').addEventListener('click', async ()=>{
-      p.active = (p.active===false) ? true : false;
-      await saveData(); closeModal(); render();
-      showToast(p.active===false ? 'جنس غیرفعال شد' : 'جنس فعال شد');
+    document.getElementById('toggle-product-active').addEventListener('click', async (e)=>{
+      await withSubmitGuard(e.currentTarget, async ()=>{
+        p.active = (p.active===false) ? true : false;
+        await saveData(); closeModal(); render();
+        showToast(p.active===false ? 'جنس غیرفعال شد' : 'جنس فعال شد');
+      });
     });
-    document.getElementById('stock-in').addEventListener('click', async ()=>{
-      const q = numVal(document.getElementById('f-adjust-qty'));
-      if(q<=0){ showToast('مقدار رو وارد کن'); return; }
-      manualStockIn(p.id, q, 'ورود کالا');
-      await saveData(); openAddProduct(p.id); showToast('موجودی اضافه شد');
+    document.getElementById('stock-in').addEventListener('click', async (e)=>{
+      await withSubmitGuard(e.currentTarget, async ()=>{
+        const q = numVal(document.getElementById('f-adjust-qty'));
+        if(q<=0){ showToast('مقدار رو وارد کن'); throw new Error('validation'); }
+        manualStockIn(p.id, q, 'ورود کالا');
+        await saveData(); openAddProduct(p.id); showToast('موجودی اضافه شد');
+      });
     });
-    document.getElementById('stock-out').addEventListener('click', async ()=>{
-      const q = numVal(document.getElementById('f-adjust-qty'));
-      if(q<=0){ showToast('مقدار رو وارد کن'); return; }
-      const r = manualStockOut(p.id, q, 'خروج/اصلاح دستی');
-      if(!r || !r.ok){
-        showToast((r && r.error) ? r.error : 'امکان کاهش موجودی نیست');
-        return;
-      }
-      await saveData(); openAddProduct(p.id); showToast('موجودی کم شد');
+    document.getElementById('stock-out').addEventListener('click', async (e)=>{
+      await withSubmitGuard(e.currentTarget, async ()=>{
+        const q = numVal(document.getElementById('f-adjust-qty'));
+        if(q<=0){ showToast('مقدار رو وارد کن'); throw new Error('validation'); }
+        const r = manualStockOut(p.id, q, 'خروج/اصلاح دستی');
+        if(!r || !r.ok){
+          showToast((r && r.error) ? r.error : 'امکان کاهش موجودی نیست');
+          throw new Error('validation');
+        }
+        await saveData(); openAddProduct(p.id); showToast('موجودی کم شد');
+      });
     });
   }
 }
@@ -797,21 +819,23 @@ function openAddCustomer(editId){
     </div>
     <div class="btn-row"><button class="btn" id="save-customer">ذخیره</button></div>
   `);
-  document.getElementById('save-customer').addEventListener('click', async ()=>{
-    const name = document.getElementById('f-name').value.trim();
-    if(!name){ showToast('نام مشتری رو وارد کن'); return; }
-    const ownerName = document.getElementById('f-owner').value.trim();
-    const phone = document.getElementById('f-phone').value.trim();
-    const region = document.getElementById('f-region').value.trim();
-    const route = document.getElementById('f-route').value;
-    const address = document.getElementById('f-address').value.trim();
-    const note = document.getElementById('f-note').value.trim();
-    const openingBalance = numVal(document.getElementById('f-opening'));
-    if(c){ c.ownerName=ownerName; c.name=name; c.phone=phone; c.region=region; c.route=route; c.address=address; c.note=note; c.openingBalance=openingBalance; }
-    else{ data.customers.push({id:uid(), name, ownerName, phone, region, route, address, note, openingBalance, visits:[], active:true}); }
-    await saveData(); closeModal(); render();
-    if(c) openCustomerDetail(c.id);
-    showToast('ذخیره شد');
+  document.getElementById('save-customer').addEventListener('click', async (e)=>{
+    await withSubmitGuard(e.currentTarget, async ()=>{
+      const name = document.getElementById('f-name').value.trim();
+      if(!name){ showToast('نام مشتری رو وارد کن'); throw new Error('validation'); }
+      const ownerName = document.getElementById('f-owner').value.trim();
+      const phone = document.getElementById('f-phone').value.trim();
+      const region = document.getElementById('f-region').value.trim();
+      const route = document.getElementById('f-route').value;
+      const address = document.getElementById('f-address').value.trim();
+      const note = document.getElementById('f-note').value.trim();
+      const openingBalance = numVal(document.getElementById('f-opening'));
+      if(c){ c.ownerName=ownerName; c.name=name; c.phone=phone; c.region=region; c.route=route; c.address=address; c.note=note; c.openingBalance=openingBalance; }
+      else{ data.customers.push({id:uid(), name, ownerName, phone, region, route, address, note, openingBalance, visits:[], active:true}); }
+      await saveData(); closeModal(); render();
+      if(c) openCustomerDetail(c.id);
+      showToast('ذخیره شد');
+    });
   });
 }
 
@@ -917,44 +941,46 @@ function openAddTransaction(cid){
       });
     });
 
-    document.getElementById('save-tx').addEventListener('click', async ()=>{
-      const amount = parseFloat(faToEnDigits(amountStr))||0;
-      const date = dateStr || todayISO();
-      const note = (noteStr||'').trim();
-      if(amount<=0){ showToast('مبلغ رو وارد کن'); return; }
+    document.getElementById('save-tx').addEventListener('click', async (e)=>{
+      await withSubmitGuard(e.currentTarget, async ()=>{
+        const amount = parseFloat(faToEnDigits(amountStr))||0;
+        const date = dateStr || todayISO();
+        const note = (noteStr||'').trim();
+        if(amount<=0){ showToast('مبلغ رو وارد کن'); throw new Error('validation'); }
 
-      let returnItems = [];
-      if(method==='return'){
-        returnItems = returnRows
-          .filter(r=>r.productId && r.qty>0)
-          .map(r=>{
-            const prod = data.products.find(p=>p.id===r.productId);
-            return {productId:r.productId, name:prod?prod.name:'', qty:r.qty, price:r.price||0};
-          });
-        // هماهنگی مبلغ برگشت با «مقدار × قیمت واحد» کالاهای برگشتی (فقط وقتی قیمت واحدی وارد شده باشد)
-        const expectedReturnAmount = returnItems.reduce((s,ri)=>s+(ri.qty*(ri.price||0)),0);
-        if(expectedReturnAmount>0 && Math.abs(expectedReturnAmount-amount)>1){
-          const proceedAmount = confirm('⚠️ مبلغ واردشده با «مقدار × قیمت واحد» کالاهای برگشتی هم‌خوانی ندارد.\n\nمبلغ واردشده: '+toman(amount)+' تومان\nمبلغ منطقی طبق کالاها: '+toman(expectedReturnAmount)+' تومان\n\nمطمئنی می‌خوای همینطور ثبت کنی؟');
-          if(!proceedAmount) return;
+        let returnItems = [];
+        if(method==='return'){
+          returnItems = returnRows
+            .filter(r=>r.productId && r.qty>0)
+            .map(r=>{
+              const prod = data.products.find(p=>p.id===r.productId);
+              return {productId:r.productId, name:prod?prod.name:'', qty:r.qty, price:r.price||0};
+            });
+          // هماهنگی مبلغ برگشت با «مقدار × قیمت واحد» کالاهای برگشتی (فقط وقتی قیمت واحدی وارد شده باشد)
+          const expectedReturnAmount = returnItems.reduce((s,ri)=>s+(ri.qty*(ri.price||0)),0);
+          if(expectedReturnAmount>0 && Math.abs(expectedReturnAmount-amount)>1){
+            const proceedAmount = confirm('⚠️ مبلغ واردشده با «مقدار × قیمت واحد» کالاهای برگشتی هم‌خوانی ندارد.\n\nمبلغ واردشده: '+toman(amount)+' تومان\nمبلغ منطقی طبق کالاها: '+toman(expectedReturnAmount)+' تومان\n\nمطمئنی می‌خوای همینطور ثبت کنی؟');
+            if(!proceedAmount) throw new Error('validation');
+          }
+          // بررسی برگشت بیشتر از فروش قبلی؛ فقط هشدار می‌دهیم، جلوی ثبت را کاملاً نمی‌بندیم
+          const overItems = returnItems.filter(ri=>ri.qty > productReturnAvailableQty(cid, ri.productId));
+          if(overItems.length){
+            const lines = overItems.map(ri=>{
+              const available = productReturnAvailableQty(cid, ri.productId);
+              return `«${ri.name}»: برگشت ${ri.qty} عدد، ولی طبق فروش‌های قبلی فقط ${available} عدد قابل برگشت است`;
+            }).join('\n');
+            const proceed = confirm('⚠️ این برگشت از فروش‌های ثبت‌شده‌ی این مشتری بیشتر است:\n\n'+lines+'\n\nمطمئنی می‌خوای همینطور ثبت کنی؟');
+            if(!proceed) throw new Error('validation');
+          }
         }
-        // بررسی برگشت بیشتر از فروش قبلی؛ فقط هشدار می‌دهیم، جلوی ثبت را کاملاً نمی‌بندیم
-        const overItems = returnItems.filter(ri=>ri.qty > productReturnAvailableQty(cid, ri.productId));
-        if(overItems.length){
-          const lines = overItems.map(ri=>{
-            const available = productReturnAvailableQty(cid, ri.productId);
-            return `«${ri.name}»: برگشت ${ri.qty} عدد، ولی طبق فروش‌های قبلی فقط ${available} عدد قابل برگشت است`;
-          }).join('\n');
-          const proceed = confirm('⚠️ این برگشت از فروش‌های ثبت‌شده‌ی این مشتری بیشتر است:\n\n'+lines+'\n\nمطمئنی می‌خوای همینطور ثبت کنی؟');
-          if(!proceed) return;
-        }
-      }
 
-      const payment = {id:uid(), customerId:cid, date, amount, method, note, returnItems};
-      data.payments.push(payment);
-      if(method==='return' && returnItems.length){
-        applyReturnStockEffects(returnItems, date, payment);
-      }
-      await saveData(); openCustomerDetail(cid); render(); showToast('ثبت شد');
+        const payment = {id:uid(), customerId:cid, date, amount, method, note, returnItems};
+        data.payments.push(payment);
+        if(method==='return' && returnItems.length){
+          applyReturnStockEffects(returnItems, date, payment);
+        }
+        await saveData(); openCustomerDetail(cid); render(); showToast('ثبت شد');
+      });
     });
   }
 
@@ -969,13 +995,15 @@ function openAddCheck(cid){
     <div class="field"><label>تاریخ سررسید</label><input id="f-due" type="date" value="${todayISO()}"></div>
     <div class="btn-row"><button class="btn" id="save-check">ثبت</button></div>
   `);
-  document.getElementById('save-check').addEventListener('click', async ()=>{
-    const amount = numVal(document.getElementById('f-amount'));
-    const dueDate = document.getElementById('f-due').value || todayISO();
-    const checkNumber = document.getElementById('f-num').value.trim();
-    if(amount<=0){ showToast('مبلغ رو وارد کن'); return; }
-    data.checks.push({id:uid(), customerId:cid, amount, dueDate, checkNumber, status:'pending'});
-    await saveData(); openCustomerDetail(cid); render(); showToast('چک ثبت شد');
+  document.getElementById('save-check').addEventListener('click', async (e)=>{
+    await withSubmitGuard(e.currentTarget, async ()=>{
+      const amount = numVal(document.getElementById('f-amount'));
+      const dueDate = document.getElementById('f-due').value || todayISO();
+      const checkNumber = document.getElementById('f-num').value.trim();
+      if(amount<=0){ showToast('مبلغ رو وارد کن'); throw new Error('validation'); }
+      data.checks.push({id:uid(), customerId:cid, amount, dueDate, checkNumber, status:'pending'});
+      await saveData(); openCustomerDetail(cid); render(); showToast('چک ثبت شد');
+    });
   });
 }
 
@@ -990,14 +1018,16 @@ function openAddVisit(cid){
     </div>
     <div class="btn-row"><button class="btn" id="save-visit">ثبت ویزیت</button></div>
   `);
-  document.getElementById('save-visit').addEventListener('click', async ()=>{
-    const c = data.customers.find(x=>x.id===cid);
-    const date = document.getElementById('f-date').value || todayISO();
-    const time = document.getElementById('f-time').value || nowHHMM();
-    const result = document.getElementById('f-result').value;
-    c.visits = c.visits||[];
-    c.visits.push({id:uid(), date, time, result, ordered: result===VISIT_RESULTS[0]});
-    await saveData(); openCustomerDetail(cid); render(); showToast('ویزیت ثبت شد');
+  document.getElementById('save-visit').addEventListener('click', async (e)=>{
+    await withSubmitGuard(e.currentTarget, async ()=>{
+      const c = data.customers.find(x=>x.id===cid);
+      const date = document.getElementById('f-date').value || todayISO();
+      const time = document.getElementById('f-time').value || nowHHMM();
+      const result = document.getElementById('f-result').value;
+      c.visits = c.visits||[];
+      c.visits.push({id:uid(), date, time, result, ordered: result===VISIT_RESULTS[0]});
+      await saveData(); openCustomerDetail(cid); render(); showToast('ویزیت ثبت شد');
+    });
   });
 }
 
@@ -1074,10 +1104,12 @@ function openCustomerDetail(cid){
   document.getElementById('add-visit').addEventListener('click', ()=>openAddVisit(cid));
   document.getElementById('print-statement').addEventListener('click', ()=>printCustomerStatement(cid));
   document.getElementById('edit-customer').addEventListener('click', ()=>openAddCustomer(cid));
-  document.getElementById('toggle-customer-active').addEventListener('click', async ()=>{
-    c.active = (c.active===false) ? true : false;
-    await saveData(); openCustomerDetail(cid); render();
-    showToast(c.active===false ? 'مشتری غیرفعال شد' : 'مشتری فعال شد');
+  document.getElementById('toggle-customer-active').addEventListener('click', async (e)=>{
+    await withSubmitGuard(e.currentTarget, async ()=>{
+      c.active = (c.active===false) ? true : false;
+      await saveData(); openCustomerDetail(cid); render();
+      showToast(c.active===false ? 'مشتری غیرفعال شد' : 'مشتری فعال شد');
+    });
   });
   document.querySelectorAll('[data-open-invoice]').forEach(row=>{
     row.addEventListener('click', ()=>openInvoiceDetail(row.dataset.openInvoice, cid));
@@ -1139,12 +1171,14 @@ function openInvoiceDetail(invId, cid){
   document.getElementById('print-inv-detail').addEventListener('click', ()=>printInvoice(inv.id));
   document.getElementById('image-inv-detail').addEventListener('click', ()=>exportInvoiceImage(inv.id));
   document.getElementById('edit-invoice').addEventListener('click', ()=>openEditInvoice(inv.id, cid));
-  document.getElementById('del-invoice').addEventListener('click', async ()=>{
-    if(!confirm('با حذف این فاکتور، موجودی انبار و حساب مشتری اصلاح خواهد شد. ادامه می‌دهید؟')) return;
-    revertInvoiceStockEffects(inv);
-    revertInvoicePayments(inv);
-    data.invoices = data.invoices.filter(x=>x.id!==invId);
-    await saveData(); openCustomerDetail(cid); render(); showToast('فاکتور حذف شد؛ موجودی و حساب مشتری اصلاح شد');
+  document.getElementById('del-invoice').addEventListener('click', async (e)=>{
+    await withSubmitGuard(e.currentTarget, async ()=>{
+      if(!confirm('با حذف این فاکتور، موجودی انبار و حساب مشتری اصلاح خواهد شد. ادامه می‌دهید؟')) throw new Error('validation');
+      revertInvoiceStockEffects(inv);
+      revertInvoicePayments(inv);
+      data.invoices = data.invoices.filter(x=>x.id!==invId);
+      await saveData(); openCustomerDetail(cid); render(); showToast('فاکتور حذف شد؛ موجودی و حساب مشتری اصلاح شد');
+    });
   });
 }
 
@@ -1671,7 +1705,13 @@ function openInvoiceForm(cid, editInv){
           before, after:{date, items, total, discount, discountType, cashPaid, cardPaid, transferPaid, checkPaid:checkAmount},
         });
 
-        await saveData(); closeModal(); openInvoiceDetail(editInv.id, cid); render();
+        try{
+          await saveData();
+        }catch(e){
+          btn.disabled = false;
+          return;
+        }
+        closeModal(); openInvoiceDetail(editInv.id, cid); render();
         showToast('فاکتور ویرایش شد؛ موجودی و حساب مشتری اصلاح شد');
         return;
       }
@@ -1690,7 +1730,13 @@ function openInvoiceForm(cid, editInv){
       newInv.number = nextInvoiceNumber();
       data.invoices.push(newInv);
       pushInvoicePayments(cid, newInv, cashPaid, cardPaid, transferPaid, checkAmount, checkDue, null);
-      await saveData(); render(); showToast('فاکتور ثبت شد');
+      try{
+        await saveData();
+      }catch(e){
+        btn.disabled = false;
+        return;
+      }
+      render(); showToast('فاکتور ثبت شد');
       openSheet(`
         <h3>فاکتور ثبت و توی حساب مشتری ذخیره شد</h3>
         <div class="empty">حالا می‌خوای همین فاکتور رو چاپ کنی، تصویرش رو بگیری یا فقط ذخیره بمونه؟</div>
@@ -1729,13 +1775,15 @@ function openAddSupplier(){
     </div>
     <div class="btn-row"><button class="btn" id="save-supplier">ذخیره</button></div>
   `);
-  document.getElementById('save-supplier').addEventListener('click', async ()=>{
-    const name = document.getElementById('f-name').value.trim();
-    if(!name){ showToast('نام تامین‌کننده رو وارد کن'); return; }
-    const phone = document.getElementById('f-phone').value.trim();
-    const openingBalance = numVal(document.getElementById('f-opening'));
-    data.suppliers.push({id:uid(), name, phone, openingBalance, purchases:[], payments:[]});
-    await saveData(); closeModal(); render(); showToast('تامین‌کننده اضافه شد');
+  document.getElementById('save-supplier').addEventListener('click', async (e)=>{
+    await withSubmitGuard(e.currentTarget, async ()=>{
+      const name = document.getElementById('f-name').value.trim();
+      if(!name){ showToast('نام تامین‌کننده رو وارد کن'); throw new Error('validation'); }
+      const phone = document.getElementById('f-phone').value.trim();
+      const openingBalance = numVal(document.getElementById('f-opening'));
+      data.suppliers.push({id:uid(), name, phone, openingBalance, purchases:[], payments:[]});
+      await saveData(); closeModal(); render(); showToast('تامین‌کننده اضافه شد');
+    });
   });
 }
 
@@ -1860,13 +1908,14 @@ function openSupplierDetail(sid){
       document.getElementById('mi-price').value='';
       renderMultiRows();
     });
-    document.getElementById('save-purchase').addEventListener('click', async ()=>{
+    document.getElementById('save-purchase').addEventListener('click', async (e)=>{
+      await withSubmitGuard(e.currentTarget, async ()=>{
       const date = document.getElementById('f-date').value || todayISO();
       const desc = document.getElementById('f-desc').value.trim();
       const isMulti = document.getElementById('multi-item-fields').style.display!=='none';
       s.purchases = s.purchases||[];
       if(isMulti){
-        if(multiItems.length===0){ showToast('حداقل یک قلم کالا اضافه کن'); return; }
+        if(multiItems.length===0){ showToast('حداقل یک قلم کالا اضافه کن'); throw new Error('validation'); }
         for(const it of multiItems){
           if(!it.productId || !data.products.find(x=>x.id===it.productId)){ showToast('یکی از کالاها معتبر نیست'); return; }
           if(!(it.qty>0)){ showToast('تعداد همه اقلام باید بیشتر از صفر باشد'); return; }
@@ -1890,11 +1939,11 @@ function openSupplierDetail(sid){
         const amount = numVal(document.getElementById('f-amount'));
         const productId = document.getElementById('f-product').value;
         const qty = numVal(document.getElementById('f-qty'));
-        if(amount<=0){ showToast('مبلغ رو وارد کن'); return; }
+        if(amount<=0){ showToast('مبلغ رو وارد کن'); throw new Error('validation'); }
         if(productId){
           const prod = data.products.find(x=>x.id===productId);
-          if(!prod){ showToast('کالای انتخاب‌شده معتبر نیست'); return; }
-          if(!(qty>0)){ showToast('تعداد کالا باید بیشتر از صفر باشد'); return; }
+          if(!prod){ showToast('کالای انتخاب‌شده معتبر نیست'); throw new Error('validation'); }
+          if(!(qty>0)){ showToast('تعداد کالا باید بیشتر از صفر باشد'); throw new Error('validation'); }
           // قیمت واحد ضمنی = مبلغ/تعداد؛ با amount>0 و qty>0 خودبه‌خود >0 است
         }
         const purchase = {id:uid(), date, amount, desc, productId, qty};
@@ -1902,6 +1951,7 @@ function openSupplierDetail(sid){
         applyPurchaseStockEffects(purchase, s.name);
       }
       await saveData(); openSupplierDetail(sid); render(); showToast('خرید ثبت شد');
+      });
     });
   });
   document.getElementById('add-suppay').addEventListener('click', ()=>{
@@ -1929,12 +1979,13 @@ function openSupplierDetail(sid){
     methodEl.addEventListener('change', ()=>{
       checkFields.style.display = methodEl.value==='check' ? '' : 'none';
     });
-    document.getElementById('save-suppay').addEventListener('click', async ()=>{
+    document.getElementById('save-suppay').addEventListener('click', async (e)=>{
+      await withSubmitGuard(e.currentTarget, async ()=>{
       const amount = numVal(document.getElementById('f-amount'));
       const date = document.getElementById('f-date').value || todayISO();
       const method = methodEl.value;
       const note = (document.getElementById('f-note').value||'').trim();
-      if(amount<=0){ showToast('مبلغ رو وارد کن'); return; }
+      if(amount<=0){ showToast('مبلغ رو وارد کن'); throw new Error('validation'); }
       s.payments = s.payments||[];
       if(method==='check'){
         const dueDate = document.getElementById('f-due').value || date;
@@ -1958,22 +2009,25 @@ function openSupplierDetail(sid){
         s.payments.push({id: uid(), date, amount, method: 'cash', note});
       }
       await saveData(); openSupplierDetail(sid); render(); showToast('پرداخت ثبت شد');
+      });
     });
   });
 
   // حذف پرداخت نقدی یا چک — با حذف، مبلغ از جمع پرداخت‌ها خارج و مانده اصلاح می‌شود
   // توجه: pidx مربوط به آرایهٔ مرتب‌شدهٔ payments است؛ ایندکس واقعی با indexOf گرفته می‌شود
   document.querySelectorAll('[data-sup-pay-del]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const pidx = parseInt(btn.dataset.supPayDel, 10);
-      const p = payments[pidx];
-      if(!p) return;
-      const realIdx = (s.payments||[]).indexOf(p);
-      if(realIdx<0) return;
-      const label = p.method==='check' ? ('چک'+(p.checkNumber?(' #'+p.checkNumber):'')) : 'پرداخت';
-      if(!confirm('«'+label+'» به مبلغ '+toman(p.method==='check'?(p.faceAmount||p.amount):p.amount)+' تومان حذف شود؟\nمانده حساب تامین‌کننده اصلاح می‌شود.')) return;
-      s.payments.splice(realIdx, 1);
-      await saveData(); openSupplierDetail(sid); render(); showToast('حذف شد');
+    btn.addEventListener('click', async (e)=>{
+      await withSubmitGuard(e.currentTarget, async ()=>{
+        const pidx = parseInt(btn.dataset.supPayDel, 10);
+        const p = payments[pidx];
+        if(!p) throw new Error('validation');
+        const realIdx = (s.payments||[]).indexOf(p);
+        if(realIdx<0) throw new Error('validation');
+        const label = p.method==='check' ? ('چک'+(p.checkNumber?(' #'+p.checkNumber):'')) : 'پرداخت';
+        if(!confirm('«'+label+'» به مبلغ '+toman(p.method==='check'?(p.faceAmount||p.amount):p.amount)+' تومان حذف شود؟\nمانده حساب تامین‌کننده اصلاح می‌شود.')) throw new Error('validation');
+        s.payments.splice(realIdx, 1);
+        await saveData(); openSupplierDetail(sid); render(); showToast('حذف شد');
+      });
     });
   });
 
@@ -2049,18 +2103,22 @@ function openSupplierDetail(sid){
       </div>
       <div class="btn-row"><button class="btn" id="save-sup-edit">ذخیره</button></div>
     `);
-    document.getElementById('save-sup-edit').addEventListener('click', async ()=>{
-      const name = document.getElementById('f-name').value.trim();
-      if(!name){ showToast('نام رو وارد کن'); return; }
-      s.name = name; s.phone = document.getElementById('f-phone').value.trim();
-      s.openingBalance = numVal(document.getElementById('f-opening'));
-      await saveData(); openSupplierDetail(sid); render(); showToast('ذخیره شد');
+    document.getElementById('save-sup-edit').addEventListener('click', async (e)=>{
+      await withSubmitGuard(e.currentTarget, async ()=>{
+        const name = document.getElementById('f-name').value.trim();
+        if(!name){ showToast('نام رو وارد کن'); throw new Error('validation'); }
+        s.name = name; s.phone = document.getElementById('f-phone').value.trim();
+        s.openingBalance = numVal(document.getElementById('f-opening'));
+        await saveData(); openSupplierDetail(sid); render(); showToast('ذخیره شد');
+      });
     });
   });
-  document.getElementById('del-supplier').addEventListener('click', async ()=>{
-    if(!confirm(`تامین‌کننده «${s.name}» حذف بشه؟`)) return;
-    data.suppliers = data.suppliers.filter(x=>x.id!==sid);
-    await saveData(); closeModal(); render(); showToast('حذف شد');
+  document.getElementById('del-supplier').addEventListener('click', async (e)=>{
+    await withSubmitGuard(e.currentTarget, async ()=>{
+      if(!confirm(`تامین‌کننده «${s.name}» حذف بشه؟`)) throw new Error('validation');
+      data.suppliers = data.suppliers.filter(x=>x.id!==sid);
+      await saveData(); closeModal(); render(); showToast('حذف شد');
+    });
   });
   document.querySelectorAll('[data-return-purchase]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -2103,7 +2161,8 @@ function openSupplierDetail(sid){
         document.querySelectorAll('.ret-item-qty').forEach(inp=>{
           inp.addEventListener('input', updateMultiRetTotal);
         });
-        document.getElementById('save-return').addEventListener('click', async ()=>{
+        document.getElementById('save-return').addEventListener('click', async (e)=>{
+          await withSubmitGuard(e.currentTarget, async ()=>{
           const date = document.getElementById('f-ret-date').value || todayISO();
           const lineReturns = [];
           let overStock = null;
@@ -2115,25 +2174,26 @@ function openSupplierDetail(sid){
             if(prod && q > (prod.stockQty||0)){ overStock = prod; }
             lineReturns.push({itemId: inp.dataset.itemId, productId: inp.dataset.productId, qty:q, unitCost: parseFloat(inp.dataset.unitCost)||0, max});
           });
-          if(lineReturns.length===0){ showToast('حداقل مقدار برگشتی یک قلم رو وارد کن'); return; }
+          if(lineReturns.length===0){ showToast('حداقل مقدار برگشتی یک قلم رو وارد کن'); throw new Error('validation'); }
           const badLine = lineReturns.find(l=>l.qty>l.max);
-          if(badLine){ alert('مقدار برگشتی از باقیمانده‌ی قابل‌برگشت این قلم بیشتره.\n\nباقیمانده قابل‌برگشت: '+badLine.max); return; }
-          if(overStock){ alert('موجودی واقعی «'+overStock.name+'» در انبار فقط '+(overStock.stockQty||0)+' عدد است.\n\nمقدار برگشتی نمی‌تواند از موجودی واقعی قابل‌برگشت بیشتر باشد.'); return; }
+          if(badLine){ alert('مقدار برگشتی از باقیمانده‌ی قابل‌برگشت این قلم بیشتره.\n\nباقیمانده قابل‌برگشت: '+badLine.max); throw new Error('validation'); }
+          if(overStock){ alert('موجودی واقعی «'+overStock.name+'» در انبار فقط '+(overStock.stockQty||0)+' عدد است.\n\nمقدار برگشتی نمی‌تواند از موجودی واقعی قابل‌برگشت بیشتر باشد.'); throw new Error('validation'); }
           const totalAmount = lineReturns.reduce((a,l)=>a+Math.round(l.qty*l.unitCost),0);
-          if(totalAmount<=0){ showToast('مبلغ برگشتی رو وارد کن'); return; }
+          if(totalAmount<=0){ showToast('مبلغ برگشتی رو وارد کن'); throw new Error('validation'); }
           const liveRemainingAmount = purchaseReturnRemainingAmount(p);
-          if(totalAmount>liveRemainingAmount){ alert('مبلغ برگشتی از مبلغ باقیمانده‌ی این خرید بیشتره.\n\nمبلغ باقیمانده قابل‌برگشت: '+toman(liveRemainingAmount)+' تومان'); return; }
-          if(!confirm('با ثبت این برگشت، موجودی انبار و بدهی به تامین‌کننده اصلاح خواهد شد. ادامه می‌دهید؟')) return;
+          if(totalAmount>liveRemainingAmount){ alert('مبلغ برگشتی از مبلغ باقیمانده‌ی این خرید بیشتره.\n\nمبلغ باقیمانده قابل‌برگشت: '+toman(liveRemainingAmount)+' تومان'); throw new Error('validation'); }
+          if(!confirm('با ثبت این برگشت، موجودی انبار و بدهی به تامین‌کننده اصلاح خواهد شد. ادامه می‌دهید؟')) throw new Error('validation');
           const totalQty = lineReturns.reduce((a,l)=>a+l.qty,0);
           const retLines = lineReturns.map(l=>({productId:l.productId, qty:l.qty, itemId:l.itemId}));
           const retResult = applyPurchaseReturnStockEffects(p, retLines, s.name, date);
-          if(!retResult.ok){ alert(retResult.error||'برگشت خرید ممکن نشد'); return; }
+          if(!retResult.ok){ alert(retResult.error||'برگشت خرید ممکن نشد'); throw new Error('validation'); }
           p.returns = p.returns||[];
           p.returns.push({
             id:uid(), date, qty:totalQty, amount:totalAmount,
             items: lineReturns.map(l=>({itemId:l.itemId, productId:l.productId, qty:l.qty, amount:Math.round(l.qty*l.unitCost)})),
           });
           await saveData(); openSupplierDetail(sid); render(); showToast('برگشت خرید ثبت شد');
+          });
         });
         return;
       }
@@ -2151,35 +2211,37 @@ function openSupplierDetail(sid){
           if(unitPrice>0) document.getElementById('f-ret-amount').value = Math.round(q*unitPrice);
         });
       }
-      document.getElementById('save-return').addEventListener('click', async ()=>{
+      document.getElementById('save-return').addEventListener('click', async (e)=>{
+        await withSubmitGuard(e.currentTarget, async ()=>{
         const date = document.getElementById('f-ret-date').value || todayISO();
         const qty = p.productId ? numVal(document.getElementById('f-ret-qty')) : 0;
         const amount = numVal(document.getElementById('f-ret-amount'));
-        if(amount<=0){ showToast('مبلغ برگشتی رو وارد کن'); return; }
-        if(p.productId && qty<=0){ showToast('مقدار برگشتی رو وارد کن'); return; }
+        if(amount<=0){ showToast('مبلغ برگشتی رو وارد کن'); throw new Error('validation'); }
+        if(p.productId && qty<=0){ showToast('مقدار برگشتی رو وارد کن'); throw new Error('validation'); }
         // اعتبارسنجی یکسان با helper مشترک (تک‌قلمی و چندقلمی)
         const liveRemainingQty = purchaseReturnRemainingQty(p);
         const liveRemainingAmount = purchaseReturnRemainingAmount(p);
         if(qty>0 && qty>liveRemainingQty){
           alert('مقدار برگشتی از باقیمانده‌ی قابل‌برگشت این خرید بیشتره.\n\nباقیمانده قابل‌برگشت: '+liveRemainingQty);
-          return;
+          throw new Error('validation');
         }
         if(p.productId && qty>0){
           const realStockProd = data.products.find(x=>x.id===p.productId);
           if(realStockProd && qty > (realStockProd.stockQty||0)){
             alert('موجودی واقعی «'+realStockProd.name+'» در انبار فقط '+(realStockProd.stockQty||0)+' عدد است.\n\nمقدار برگشتی نمی‌تواند از موجودی واقعی قابل‌برگشت بیشتر باشد.');
-            return;
+            throw new Error('validation');
           }
         }
-        if(amount>liveRemainingAmount){ alert('مبلغ برگشتی از مبلغ باقیمانده‌ی این خرید بیشتره.\n\nمبلغ باقیمانده قابل‌برگشت: '+toman(liveRemainingAmount)+' تومان'); return; }
-        if(!confirm((p.productId?'با ثبت این برگشت، موجودی انبار و بدهی به تامین‌کننده اصلاح خواهد شد.':'با ثبت این برگشت، فقط بدهی به تامین‌کننده کم می‌شود (موجودی خودکار اصلاح نمی‌شود).')+' ادامه می‌دهید؟')) return;
+        if(amount>liveRemainingAmount){ alert('مبلغ برگشتی از مبلغ باقیمانده‌ی این خرید بیشتره.\n\nمبلغ باقیمانده قابل‌برگشت: '+toman(liveRemainingAmount)+' تومان'); throw new Error('validation'); }
+        if(!confirm((p.productId?'با ثبت این برگشت، موجودی انبار و بدهی به تامین‌کننده اصلاح خواهد شد.':'با ثبت این برگشت، فقط بدهی به تامین‌کننده کم می‌شود (موجودی خودکار اصلاح نمی‌شود).')+' ادامه می‌دهید؟')) throw new Error('validation');
         if(p.productId && qty>0){
           const retResult = applyPurchaseReturnStockEffects(p, [{productId:p.productId, qty}], s.name, date);
-          if(!retResult.ok){ alert(retResult.error||'برگشت خرید ممکن نشد'); return; }
+          if(!retResult.ok){ alert(retResult.error||'برگشت خرید ممکن نشد'); throw new Error('validation'); }
         }
         p.returns = p.returns||[];
         p.returns.push({id:uid(), date, qty, amount});
         await saveData(); openSupplierDetail(sid); render(); showToast('برگشت خرید ثبت شد');
+        });
       });
     });
   });

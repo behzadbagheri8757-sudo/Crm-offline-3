@@ -115,7 +115,14 @@ function balanceStatusWord(balance){
 function balanceStatusText(balance, amountText){
   return balance===0 ? balanceStatusWord(balance) : (balanceStatusWord(balance)+': '+amountText);
 }
-function todayISO(){ return new Date().toISOString().slice(0,10); }
+/** Local calendar date as YYYY-MM-DD (not UTC — avoids Iran midnight offset). */
+function todayISO(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
 function nowHHMM(){ const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 function faDate(iso){
   if(!iso) return '—';
