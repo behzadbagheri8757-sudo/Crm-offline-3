@@ -24,6 +24,14 @@
 .settings-section h3{font-size:1rem;margin:0 0 10px;font-weight:800;}
 .auto-backup-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px dotted var(--line);}
 .auto-backup-row:last-child{border-bottom:none;}
+.settings-tech-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:14px 16px;background:var(--color-surface,#fff);border:1px solid var(--color-border,#E2E7EE);
+  border-radius:12px;cursor:pointer;min-height:48px;-webkit-tap-highlight-color:transparent;user-select:none;
+}
+.settings-tech-row:active{background:var(--color-surface-2,#EEF1F5);}
+.settings-tech-row .tech-label{font-weight:700;font-size:.9rem;color:var(--color-primary,#0B1F3A);}
+.settings-tech-row .tech-chevron{color:var(--color-text-muted,#6A7383);font-size:1.1rem;font-weight:700;}
 </style>
 </head>
 <body data-page="settings">
@@ -96,39 +104,6 @@ async function drawSettingsPage(){
     <h2 class="section-title">تنظیمات و بکاپ</h2>
 
     <div class="settings-section">
-      <h3>اطلاعات برنامه</h3>
-      <div class="cards">
-        <div class="card wide"><div class="label">نام</div>
-          <div class="value" style="font-size:1rem;">حبوبات و خشکبار باقری — دفتر حساب</div></div>
-        <div class="card"><div class="label">نسخه معماری</div>
-          <div class="value" style="font-size:.95rem;">چندصفحه‌ای · فاز ۱۱</div></div>
-        <div class="card"><div class="label">schemaVersion</div>
-          <div class="value">${data.schemaVersion != null ? data.schemaVersion : '—'}</div></div>
-        <div class="card wide"><div class="label">ذخیره‌سازی محلی</div>
-          <div class="value" style="font-size:.9rem;">${esc(storageStatusLabel())}</div>
-          <div class="sub" style="margin-top:4px;">DB: baqeriDB · store: appdata · کلید: main</div>
-        </div>
-        <div class="card"><div class="label">سری فاکتور</div><div class="value">${data.invoiceSeq != null ? data.invoiceSeq : '—'}</div></div>
-      </div>
-      <div class="report-note" style="font-size:.78rem;color:var(--ink-soft);margin-top:8px;line-height:1.55;">
-        برنامه آفلاین است. داده‌ها روی همین دستگاه ذخیره می‌شوند. برای امنیت، به‌طور منظم Backup بگیرید.
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <h3>آمار دادهٔ فعلی</h3>
-      <div class="cards">
-        <div class="card"><div class="label">مشتریان</div><div class="value">${(data.customers||[]).length}</div></div>
-        <div class="card"><div class="label">کالاها</div><div class="value">${(data.products||[]).length}</div></div>
-        <div class="card"><div class="label">فاکتورها</div><div class="value">${(data.invoices||[]).length}</div></div>
-        <div class="card"><div class="label">تأمین‌کنندگان</div><div class="value">${(data.suppliers||[]).length}</div></div>
-        <div class="card"><div class="label">پرداخت‌ها</div><div class="value">${(data.payments||[]).length}</div></div>
-        <div class="card"><div class="label">چک‌ها</div><div class="value">${(data.checks||[]).length}</div></div>
-        <div class="card wide"><div class="label">ویزیت مشتریان</div><div class="value">${visitCount}</div></div>
-      </div>
-    </div>
-
-    <div class="settings-section">
       <h3>Backup</h3>
       <div class="settings-warn">
         فایل JSON را در جایی امن نگه دارید (Files / ابر / کامپیوتر). روی iPhone معمولاً برگه Share و «Save to Files» باز می‌شود.
@@ -150,7 +125,7 @@ async function drawSettingsPage(){
       <div class="btn-row">
         <button type="button" class="btn danger" id="do-import">بازیابی و جایگزینی</button>
         <button type="button" class="btn secondary" id="undo-import" ${canUndo?'':'disabled'}>
-          برگشت از آخرین بازیابی
+          بازگشت به نسخه قبل از آخرین بازیابی
         </button>
       </div>
       <div class="sub" style="margin-top:8px;font-size:.78rem;">
@@ -166,6 +141,26 @@ async function drawSettingsPage(){
         برنامه در صورت استفاده، حداکثر هر ۱۲ ساعت یک نسخه داخل IndexedDB نگه می‌دارد (تا ۵ نسخه). این جایگزین Backup فایل JSON نیست.
       </div>
       <div class="card">${autoHtml}</div>
+    </div>
+
+    <div class="settings-section">
+      <h3>آمار دادهٔ فعلی</h3>
+      <div class="cards">
+        <div class="card"><div class="label">مشتریان</div><div class="value">${(data.customers||[]).length}</div></div>
+        <div class="card"><div class="label">کالاها</div><div class="value">${(data.products||[]).length}</div></div>
+        <div class="card"><div class="label">فاکتورها</div><div class="value">${(data.invoices||[]).length}</div></div>
+        <div class="card"><div class="label">تأمین‌کنندگان</div><div class="value">${(data.suppliers||[]).length}</div></div>
+        <div class="card"><div class="label">پرداخت‌ها</div><div class="value">${(data.payments||[]).length}</div></div>
+        <div class="card"><div class="label">چک‌ها</div><div class="value">${(data.checks||[]).length}</div></div>
+        <div class="card wide"><div class="label">ویزیت مشتریان</div><div class="value">${visitCount}</div></div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-tech-row" id="open-tech-info" role="button" tabindex="0">
+        <span class="tech-label">⚙️ اطلاعات فنی</span>
+        <span class="tech-chevron">‹</span>
+      </div>
     </div>
   `;
 
@@ -201,6 +196,33 @@ async function drawSettingsPage(){
       location.reload();
     };
   });
+
+  const techRow = document.getElementById('open-tech-info');
+  if(techRow){
+    techRow.onclick = () => {
+      const schema = data.schemaVersion != null ? data.schemaVersion : '—';
+      const seq = data.invoiceSeq != null ? data.invoiceSeq : '—';
+      openSheet(`
+        <h3>اطلاعات فنی</h3>
+        <div class="cards" style="margin-top:4px;">
+          <div class="card wide"><div class="label">نام</div>
+            <div class="value" style="font-size:1rem;">حبوبات و خشکبار باقری — دفتر حساب</div></div>
+          <div class="card"><div class="label">نسخه معماری</div>
+            <div class="value" style="font-size:.95rem;">چندصفحه‌ای · فاز ۱۱</div></div>
+          <div class="card"><div class="label">schemaVersion</div>
+            <div class="value">${esc(String(schema))}</div></div>
+          <div class="card wide"><div class="label">ذخیره‌سازی محلی</div>
+            <div class="value" style="font-size:.9rem;">${esc(storageStatusLabel())}</div>
+            <div class="sub" style="margin-top:4px;">DB: baqeriDB · store: appdata · کلید: main</div>
+          </div>
+          <div class="card"><div class="label">سری فاکتور</div><div class="value">${esc(String(seq))}</div></div>
+        </div>
+        <div class="report-note" style="font-size:.78rem;color:var(--ink-soft);margin-top:12px;line-height:1.55;">
+          برنامه آفلاین است. داده‌ها روی همین دستگاه ذخیره می‌شوند. برای امنیت، به‌طور منظم Backup بگیرید.
+        </div>
+      `);
+    };
+  }
 }
 
 function render(){ drawSettingsPage(); }
