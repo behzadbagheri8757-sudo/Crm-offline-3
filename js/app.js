@@ -711,14 +711,19 @@ function openAddProduct(editId){
     const minStock = numVal(document.getElementById('f-minstock'));
     if(!name){ showToast('نام جنس رو وارد کن'); return null; }
     if(p){
+      // Stock adjust first (may block). On failure leave other fields untouched and do not save.
+      if(stockQty !== p.stockQty){
+        const adj = manualStockAdjustAbsolute(p.id, stockQty, 'ویرایش دستی موجودی');
+        if(!adj || !adj.ok){
+          showToast((adj && adj.error) ? adj.error : 'امکان تغییر موجودی نیست');
+          return null;
+        }
+      }
       p.name=name; p.category=category; p.packageWeight=packageWeight;
       p.buy=buy; p.wholesale=wholesale; p.retail=retail; p.sell=retail;
       p.minStock=minStock;
       p.priceHistory = p.priceHistory||[];
       p.priceHistory.push({date:pdate, buy, wholesale, retail});
-      if(stockQty !== p.stockQty){
-        manualStockAdjustAbsolute(p.id, stockQty, 'ویرایش دستی موجودی');
-      }
       await saveData();
       return p;
     } else {
@@ -753,10 +758,11 @@ function openAddProduct(editId){
     document.getElementById('stock-out').addEventListener('click', async ()=>{
       const q = numVal(document.getElementById('f-adjust-qty'));
       if(q<=0){ showToast('مقدار رو وارد کن'); return; }
-      if(q > (p.stockQty||0)){
-        if(!confirm('موجودی فعلی «'+p.name+'» فقط '+(p.stockQty||0)+' عدد است.\n\nبا این خروج، موجودی منفی می‌شود. مطمئنی می‌خوای ادامه بدی؟')) return;
+      const r = manualStockOut(p.id, q, 'خروج/اصلاح دستی');
+      if(!r || !r.ok){
+        showToast((r && r.error) ? r.error : 'امکان کاهش موجودی نیست');
+        return;
       }
-      manualStockOut(p.id, q, 'خروج/اصلاح دستی');
       await saveData(); openAddProduct(p.id); showToast('موجودی کم شد');
     });
   }

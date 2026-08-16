@@ -504,11 +504,43 @@ function manualStockIn(productId, qty, note){
 function manualStockOut(productId, qty, note){
   const prod = data.products.find(p=>p.id===productId);
   if(!prod || !(qty>0)) return { ok:false, error:'نامعتبر' };
+  const stock = Number(prod.stockQty)||0;
+  const available = fifoAvailableQty(productId);
+  // Atomic: no layer/stock/log mutation unless the full request is feasible
+  if(qty > stock + 1e-9){
+    return {
+      ok:false,
+      code:'STOCK',
+      error:'موجودی کالا کافی نیست. درخواست: '+qty+' — موجودی: '+stock,
+      requested: qty,
+      available: stock,
+    };
+  }
+  if(qty > available + 1e-9){
+    return {
+      ok:false,
+      code:'FIFO_SHORTFALL',
+      error:'موجودی FIFO کافی نیست. درخواست: '+qty+' — قابل خروج: '+available,
+      requested: qty,
+      available,
+    };
+  }
   const { allocations, shortfall } = consumeLayersFIFO(productId, qty);
-  prod.stockQty = (prod.stockQty||0) - qty;
+  // Defensive: should not happen after pre-check; roll back partial consume
+  if(shortfall > 0){
+    restoreLayerAllocations(allocations.map(a=>({...a, productId})));
+    return {
+      ok:false,
+      code:'FIFO_SHORTFALL',
+      error:'موجودی FIFO کافی نیست. درخواست: '+qty+' — قابل خروج: '+(qty-shortfall),
+      requested: qty,
+      available: qty-shortfall,
+    };
+  }
+  prod.stockQty = stock - qty;
   prod.stockLog = prod.stockLog||[];
   prod.stockLog.push({id:uid(), date:todayISO(), type:'out', qty:-qty, note: note||'خروج/اصلاح دستی'});
-  return { ok:true, allocations, shortfall };
+  return { ok:true, allocations, shortfall:0 };
 }
 
 function manualStockAdjustAbsolute(productId, targetQty, note){
@@ -533,7 +565,40 @@ function manualStockAdjustAbsolute(productId, targetQty, note){
     });
   } else {
     const need = -delta;
-    consumeLayersFIFO(productId, need);
+    const available = fifoAvailableQty(productId);
+    // Atomic: block entire adjust-down if FIFO cannot cover the full reduction
+    if(need > available + 1e-9){
+      return {
+        ok:false,
+        code:'FIFO_SHORTFALL',
+        error:'امکان کاهش موجودی نیست؛ موجودی FIFO کافی نیست. درخواست کاهش: '+need+' — قابل خروج: '+available,
+        requested: need,
+        available,
+        delta:0,
+      };
+    }
+    if(need > current + 1e-9){
+      return {
+        ok:false,
+        code:'STOCK',
+        error:'امکان کاهش موجودی نیست؛ موجودی کالا کافی نیست. درخواست کاهش: '+need+' — موجودی: '+current,
+        requested: need,
+        available: current,
+        delta:0,
+      };
+    }
+    const { allocations, shortfall } = consumeLayersFIFO(productId, need);
+    if(shortfall > 0){
+      restoreLayerAllocations(allocations.map(a=>({...a, productId})));
+      return {
+        ok:false,
+        code:'FIFO_SHORTFALL',
+        error:'امکان کاهش موجودی نیست؛ موجودی FIFO کافی نیست.',
+        requested: need,
+        available: need-shortfall,
+        delta:0,
+      };
+    }
     prod.stockQty = target;
     prod.stockLog = prod.stockLog||[];
     prod.stockLog.push({id:uid(), date:todayISO(), type:'adjust', qty:delta, note: note||'ویرایش دستی موجودی'});
