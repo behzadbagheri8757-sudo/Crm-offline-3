@@ -115,7 +115,7 @@ function drawSupplierPage(){
     </div>
 
     <div class="card" style="margin-bottom:12px;">
-      <div style="font-size:1.15rem;font-weight:800;color:var(--olive-dark);margin-bottom:8px;">${esc(s.name)}</div>
+      <div style="font-size:1.15rem;font-weight:800;color:var(--olive-dark);margin-bottom:8px;">${esc(s.name)}${s.active===false?' <span class="badge pending">غیرفعال</span>':''}</div>
       <div style="font-size:.88rem;line-height:1.85;">
         ${s.phone ? '<div>تلفن: '+esc(s.phone)+'</div>' : ''}
       </div>

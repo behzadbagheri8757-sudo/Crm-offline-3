@@ -114,10 +114,19 @@ function bindInvoiceActionsOnce(){
       } else if(action === 'del'){
         (async ()=>{
           if(!confirm('با حذف این فاکتور، موجودی انبار و حساب مشتری اصلاح خواهد شد. ادامه می‌دهید؟')) return;
+          // اسنپ‌شات کامل قبل از هر mutation — اگر saveData() شکست بخورد، data در
+          // حافظه دقیقاً به همین حالت (قبل از حذف) برمی‌گردد تا با آخرین نسخه‌ی
+          // موفق در IndexedDB ناهماهنگ نماند.
+          const previousData = JSON.parse(JSON.stringify(data));
           revertInvoiceStockEffects(inv);
           revertInvoicePayments(inv);
           data.invoices = data.invoices.filter(x => x.id !== inv.id);
-          await saveData();
+          try{
+            await saveData();
+          }catch(saveErr){
+            data = previousData;
+            throw saveErr;
+          }
           showToast('فاکتور حذف شد؛ موجودی و حساب مشتری اصلاح شد');
           location.href = './invoices.html';
         })().catch(err=>{

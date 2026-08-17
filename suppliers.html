@@ -138,7 +138,7 @@ function renderSupplierListOnly(){
       const amt = t.balance === 0 ? word : (word + ': ' + toman(Math.abs(t.balance)) + ' ت');
       const sub = [s.phone, purchaseCount ? (purchaseCount + ' خرید') : ''].filter(Boolean).join(' — ');
       return `<a class="ledger-row" href="./supplier.html?id=${encodeURIComponent(s.id)}" style="text-decoration:none;color:inherit;">
-        <span class="name">${esc(s.name)}${sub?`<span class="sub">${esc(sub)}</span>`:''}</span>
+        <span class="name">${esc(s.name)}${s.active===false?' <span class="badge pending">غیرفعال</span>':''}${sub?`<span class="sub">${esc(sub)}</span>`:''}</span>
         <span class="filler"></span>
         <span class="amount ${color}">${amt}</span>
       </a>`;
