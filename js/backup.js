@@ -134,8 +134,15 @@ async function exportBackupJSON(){
 }
 
 function validateBackupShape(parsed){
-  if(!parsed || typeof parsed !== 'object') return false;
+  if(!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
   const arrays = ['products','customers','invoices','payments','checks','suppliers'];
+  // FIX 2: require at least one recognizable CRM backup field to actually be
+  // present as an array — rejects {}, {"foo":"bar"}, and other unrelated JSON
+  // that would otherwise pass just because every known key is "undefined".
+  // Every real backup from exportBackupJSON always includes all six arrays
+  // (even empty ones), so this stays backward-compatible with existing valid backups.
+  const hasRecognizedField = arrays.some(k => Array.isArray(parsed[k]));
+  if(!hasRecognizedField) return false;
   return arrays.every(k => parsed[k]===undefined || Array.isArray(parsed[k]));
 }
 
@@ -155,8 +162,16 @@ async function importBackupJSON(file){
       if(pSnap) await dbPut(PRERESTORE_PROSPECT_KEY, JSON.stringify(pSnap));
     }catch(e){ console.error('prospect pre-restore snapshot failed', e); }
 
+    // FIX 4: keep the previous in-memory data so a failed save doesn't leave
+    // the app running on an unsaved/half-applied dataset.
+    const previousData = data;
     data = normalizeData(parsed);
-    await saveData();
+    try{
+      await saveData();
+    }catch(saveErr){
+      data = previousData;
+      throw saveErr;
+    }
     // فقط اگر بکاپ جدید شامل prospectScout باشد جایگزین می‌شود؛ بکاپ قدیمی Prospect فعلی را دست نمی‌زند
     if(parsed.prospectScout){
       await restoreProspectScoutBundle(parsed.prospectScout);
@@ -173,8 +188,20 @@ async function undoLastRestore(){
   try{
     const snap = await dbGet(PRERESTORE_KEY);
     if(!snap || !snap.value){ showToast('نسخه‌ی قبل از بازیابی موجود نیست'); return; }
+    // FIX 4: keep the previous in-memory data so a failed save doesn't leave
+    // the app running on an unsaved/half-applied dataset.
+    const previousData = data;
     data = normalizeData(JSON.parse(snap.value));
-    await saveData();
+    try{
+      await saveData();
+    }catch(saveErr){
+      data = previousData;
+      throw saveErr;
+    }
+    // FIX 3: the snapshot has now been successfully consumed — invalidate it so
+    // it can't remain permanently reusable / silently reapplied months later.
+    // Only removed AFTER a successful save (a failed save keeps it for recovery).
+    try{ await dbDelete(PRERESTORE_KEY); }catch(e){ console.error('pre-restore snapshot cleanup failed', e); }
     try{
       const pSnap = await dbGet(PRERESTORE_PROSPECT_KEY);
       if(pSnap && pSnap.value){
@@ -217,8 +244,16 @@ async function restoreFromAutoBackup(key){
     if(!snap || !snap.value){ showToast('این نسخه‌ی بکاپ پیدا نشد'); return; }
     // مثل بازیابی از فایل: قبل از جایگزینی، وضعیت فعلی هم نگه داشته می‌شود
     await dbPut(PRERESTORE_KEY, JSON.stringify(data));
+    // FIX 4: keep the previous in-memory data so a failed save doesn't leave
+    // the app running on an unsaved/half-applied dataset.
+    const previousData = data;
     data = normalizeData(JSON.parse(snap.value));
-    await saveData();
+    try{
+      await saveData();
+    }catch(saveErr){
+      data = previousData;
+      throw saveErr;
+    }
     render();
     showToast('از بکاپ خودکار بازیابی شد');
   }catch(e){

@@ -250,6 +250,9 @@ function normalizeData(parsed){
   d.suppliers = (parsed.suppliers||[]).map(s=>({
     id:s.id||uid(), name:s.name||'', phone:s.phone||'',
     openingBalance: s.openingBalance||0,
+    // FIX 1: archival/inactive flag only — never removes the supplier or its history.
+    // Same convention as products/customers (`active!==false` keeps old backups defaulting to active).
+    active: s.active!==false,
     purchases:(s.purchases||[]).map(p=>({
       id:p.id||uid(), date:p.date, amount:p.amount, desc:p.desc||'', productId:p.productId||'', qty:p.qty||0,
       items: Array.isArray(p.items) ? p.items.map(it=>({id:it.id||uid(), productId:it.productId||'', name:it.name||'', qty:it.qty||0, unitCost:it.unitCost||0, lineAmount:it.lineAmount||0})) : undefined,

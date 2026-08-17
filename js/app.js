@@ -1662,6 +1662,11 @@ function openInvoiceForm(cid, editInv){
       if(editInv){
         if(!confirm('با ویرایش این فاکتور، موجودی انبار و حساب مشتری اصلاح خواهد شد. ادامه می‌دهید؟')){ btn.disabled = false; return; }
 
+        // اسنپ‌شات کامل قبل از هر mutation — اگر saveData() در انتها شکست بخورد،
+        // data در حافظه دقیقاً به همین حالت (قبل از هر تغییری) برمی‌گردد تا با
+        // آخرین نسخه‌ی موفق در IndexedDB ناهماهنگ نماند.
+        const previousData = JSON.parse(JSON.stringify(data));
+
         // snapshot قبل از تغییر، برای تاریخچه و rollback احتمالی
         const before = {
           date:editInv.date, items:editInv.items, total:editInv.total, discount:editInv.discount, discountType:editInv.discountType,
@@ -1708,6 +1713,9 @@ function openInvoiceForm(cid, editInv){
         try{
           await saveData();
         }catch(e){
+          // saveData() شکست خورد: data را دقیقاً به حالت قبل از این ویرایش برگردان
+          // تا RAM با آخرین نسخه‌ی واقعاً ذخیره‌شده در IndexedDB هماهنگ بماند.
+          data = previousData;
           btn.disabled = false;
           return;
         }
@@ -1720,6 +1728,10 @@ function openInvoiceForm(cid, editInv){
         id:uid(), number:null, customerId:cid, date, items, total, discount, discountType,
         prevBalance, cashPaid, cardPaid, transferPaid, checkPaid:checkAmount, newBalance,
       };
+      // اسنپ‌شات کامل قبل از هر mutation — اگر saveData() در انتها شکست بخورد،
+      // data در حافظه دقیقاً به همین حالت (قبل از هر تغییری) برمی‌گردد تا با
+      // آخرین نسخه‌ی موفق در IndexedDB ناهماهنگ نماند.
+      const previousData = JSON.parse(JSON.stringify(data));
       try{
         applyInvoiceStockEffects(items, date, newInv, true);
       }catch(e){
@@ -1733,6 +1745,9 @@ function openInvoiceForm(cid, editInv){
       try{
         await saveData();
       }catch(e){
+        // saveData() شکست خورد: data را دقیقاً به حالت قبل از این فاکتور برگردان
+        // تا RAM با آخرین نسخه‌ی واقعاً ذخیره‌شده در IndexedDB هماهنگ بماند.
+        data = previousData;
         btn.disabled = false;
         return;
       }
@@ -1793,8 +1808,9 @@ function openSupplierDetail(sid){
   const t = supplierTotals(sid);
   const purchases = (s.purchases||[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
   const payments = (s.payments||[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const isSupOff = s.active===false;
   openSheet(`
-    <h3>${esc(s.name)}</h3>
+    <h3>${esc(s.name)}${isSupOff?' <span class="badge pending">غیرفعال</span>':''}</h3>
     ${s.phone?`<div class="empty" style="padding:0 0 8px;text-align:right;">تلفن: ${esc(s.phone)}</div>`:''}
     ${s.openingBalance?`<div class="empty" style="padding:0 0 8px;text-align:right;">مانده بدهی اولیه (قبل از این برنامه): ${toman(Math.abs(s.openingBalance))} ت</div>`:''}
     <div class="cards">
@@ -1806,7 +1822,7 @@ function openSupplierDetail(sid){
       <button class="btn" id="add-purchase">+ خرید جدید</button>
       <button class="btn secondary" id="add-suppay">+ پرداخت</button>
       <button class="btn secondary" id="edit-supplier">ویرایش</button>
-      <button class="btn danger" id="del-supplier">حذف تامین‌کننده</button>
+      <button class="btn secondary" id="toggle-supplier-active">${isSupOff?'فعال‌سازی تأمین‌کننده':'غیرفعال‌سازی تأمین‌کننده'}</button>
     </div>
     <h2 class="section-title">خریدها</h2>
     ${purchases.length===0?`<div class="empty">خریدی ثبت نشده</div>`:purchases.map(p=>{
@@ -2113,11 +2129,18 @@ function openSupplierDetail(sid){
       });
     });
   });
-  document.getElementById('del-supplier').addEventListener('click', async (e)=>{
+  // FIX 1: archive/deactivate only — never remove the supplier object or its
+  // historical purchases/payments/checks. No FIFO/inventory function is called here.
+  document.getElementById('toggle-supplier-active').addEventListener('click', async (e)=>{
     await withSubmitGuard(e.currentTarget, async ()=>{
-      if(!confirm(`تامین‌کننده «${s.name}» حذف بشه؟`)) throw new Error('validation');
-      data.suppliers = data.suppliers.filter(x=>x.id!==sid);
-      await saveData(); closeModal(); render(); showToast('حذف شد');
+      const willDeactivate = s.active!==false;
+      const msg = willDeactivate
+        ? `این تأمین‌کننده غیرفعال شود؟ اطلاعات و سوابق خرید و پرداخت حذف نخواهد شد.`
+        : `تامین‌کننده «${s.name}» دوباره فعال شود؟`;
+      if(!confirm(msg)) throw new Error('validation');
+      s.active = (s.active===false) ? true : false;
+      await saveData(); openSupplierDetail(sid); render();
+      showToast(s.active===false ? 'تأمین‌کننده غیرفعال شد' : 'تأمین‌کننده فعال شد');
     });
   });
   document.querySelectorAll('[data-return-purchase]').forEach(btn=>{
