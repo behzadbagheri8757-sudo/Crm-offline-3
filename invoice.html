@@ -113,6 +113,10 @@ function bindInvoiceActionsOnce(){
         openEditInvoice(inv.id, inv.customerId);
       } else if(action === 'del'){
         (async ()=>{
+          if(typeof invoiceHasLinkedStockReturn === 'function' && invoiceHasLinkedStockReturn(inv.id)){
+            showToast('این فاکتور دارای برگشت از فروش است و برای حفظ یکپارچگی موجودی قابل حذف نیست');
+            return;
+          }
           if(!confirm('با حذف این فاکتور، موجودی انبار و حساب مشتری اصلاح خواهد شد. ادامه می‌دهید؟')) return;
           // اسنپ‌شات کامل قبل از هر mutation — اگر saveData() شکست بخورد، data در
           // حافظه دقیقاً به همین حالت (قبل از حذف) برمی‌گردد تا با آخرین نسخه‌ی
