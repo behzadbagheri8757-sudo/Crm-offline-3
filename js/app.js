@@ -665,7 +665,7 @@ function openAddProduct(editId){
     </div>
     <div class="field"><label>وزن بسته (کیلوگرم یا گرم، اختیاری)</label><input id="f-pkgw" type="text" inputmode="decimal" value="${p&&p.packageWeight?p.packageWeight:''}"></div>
 
-    <div class="field"><label>تاریخ این تغییر قیمت</label>${shamsiDateInputHTML("f-pdate", todayISO())}</div>
+    <div class="field"><label>تاریخ این تغییر قیمت</label><input id="f-pdate" type="date" value="${todayISO()}"></div>
     <div class="field" style="display:flex;gap:8px;">
       <div style="flex:1;"><label>قیمت خرید</label><input id="f-buy" type="text" inputmode="decimal" value="${p?p.buy:''}"></div>
       <div style="flex:1;"><label>قیمت عمده</label><input id="f-wholesale" type="text" inputmode="decimal" value="${p?p.wholesale:''}"></div>
@@ -898,7 +898,7 @@ function openAddTransaction(cid){
           <option value="return" ${method==='return'?'selected':''}>برگشت از فروش</option>
         </select>
       </div>
-      <div class="field"><label>تاریخ</label>${shamsiDateInputHTML("f-date", dateStr)}</div>
+      <div class="field"><label>تاریخ</label><input id="f-date" type="date" value="${dateStr}"></div>
       <div class="field"><label>مبلغ (تومان)</label><input id="f-amount" type="text" inputmode="decimal" value="${amountStr}"></div>
       <div class="field"><label>توضیح (اختیاری)</label><input id="f-note" value="${esc(noteStr)}"></div>
       ${returnItemsSectionHtml()}
@@ -992,7 +992,7 @@ function openAddCheck(cid){
     <h3>ثبت چک جدید</h3>
     <div class="field"><label>شماره چک (اختیاری)</label><input id="f-num"></div>
     <div class="field"><label>مبلغ (تومان)</label><input id="f-amount" type="text" inputmode="decimal"></div>
-    <div class="field"><label>تاریخ سررسید</label>${shamsiDateInputHTML("f-due", todayISO())}</div>
+    <div class="field"><label>تاریخ سررسید</label><input id="f-due" type="date" value="${todayISO()}"></div>
     <div class="btn-row"><button class="btn" id="save-check">ثبت</button></div>
   `);
   document.getElementById('save-check').addEventListener('click', async (e)=>{
@@ -1010,7 +1010,7 @@ function openAddCheck(cid){
 function openAddVisit(cid){
   openSheet(`
     <h3>ثبت ویزیت مشتری</h3>
-    <div class="field"><label>تاریخ</label>${shamsiDateInputHTML("f-date", todayISO())}</div>
+    <div class="field"><label>تاریخ</label><input id="f-date" type="date" value="${todayISO()}"></div>
     <div class="field"><label>ساعت</label><input id="f-time" type="time" value="${nowHHMM()}"></div>
     <div class="field">
       <label>نتیجه ویزیت</label>
@@ -1369,7 +1369,7 @@ function openInvoiceForm(cid, editInv){
     openSheet(`
       <h3>${editInv?('ویرایش فاکتور #'+(editInv.number||'—')):'فاکتور جدید'}</h3>
       ${editInv?`<div class="empty" style="padding:0 0 8px;text-align:right;">با ذخیره‌ی این ویرایش، موجودی انبار و مانده حساب مشتری به‌طور خودکار اصلاح می‌شود.</div>`:''}
-      <div class="field"><label>تاریخ</label>${shamsiDateInputHTML("f-date", editInv?editInv.date:todayISO())}</div>
+      <div class="field"><label>تاریخ</label><input id="f-date" type="date" value="${editInv?editInv.date:todayISO()}"></div>
       <div id="items-wrap">${itemsHtml()}</div>
       <button class="btn secondary small" id="add-row">+ افزودن قلم</button>
 
@@ -1381,7 +1381,7 @@ function openInvoiceForm(cid, editInv){
       </div>
       <div class="field"><label>دریافت چک</label><input id="f-check" type="text" inputmode="decimal" value="${checkAmount||''}"></div>
       <div class="field" id="check-due-wrap" style="display:${checkAmount>0?'block':'none'};">
-        <label>تاریخ سررسید چک</label>${shamsiDateInputHTML("f-check-due", checkDue)}
+        <label>تاریخ سررسید چک</label><input id="f-check-due" type="date" value="${checkDue}">
       </div>
 
       <div class="field" style="display:flex;gap:6px;align-items:end;">
@@ -1861,7 +1861,7 @@ function openSupplierDetail(sid){
     let multiItems = [];
     openSheet(`
       <h3>خرید جدید از ${esc(s.name)}</h3>
-      <div class="field"><label>تاریخ</label>${shamsiDateInputHTML("f-date", todayISO())}</div>
+      <div class="field"><label>تاریخ</label><input id="f-date" type="date" value="${todayISO()}"></div>
       <div id="single-item-fields">
         <div class="field"><label>مبلغ کل خرید (تومان)</label><input id="f-amount" type="text" inputmode="decimal"></div>
         <div class="field">
@@ -1981,9 +1981,9 @@ function openSupplierDetail(sid){
         </select>
       </div>
       <div class="field"><label>مبلغ (تومان)</label><input id="f-amount" type="text" inputmode="decimal"></div>
-      <div class="field"><label>تاریخ پرداخت / صدور</label>${shamsiDateInputHTML("f-date", todayISO())}</div>
+      <div class="field"><label>تاریخ پرداخت / صدور</label><input id="f-date" type="date" value="${todayISO()}"></div>
       <div id="check-fields" style="display:none;">
-        <div class="field"><label>تاریخ سررسید</label>${shamsiDateInputHTML("f-due", todayISO())}</div>
+        <div class="field"><label>تاریخ سررسید</label><input id="f-due" type="date" value="${todayISO()}"></div>
         <div class="field"><label>شماره چک</label><input id="f-check-num"></div>
         <div class="field"><label>بانک</label><input id="f-bank"></div>
       </div>
@@ -2075,8 +2075,8 @@ function openSupplierDetail(sid){
       openSheet(`
         <h3>ویرایش چک پرداختی</h3>
         <div class="field"><label>مبلغ (تومان)</label><input id="f-amount" type="text" inputmode="decimal" value="${face||''}"></div>
-        <div class="field"><label>تاریخ صدور</label>${shamsiDateInputHTML("f-date", p.issueDate||p.date||todayISO())}</div>
-        <div class="field"><label>تاریخ سررسید</label>${shamsiDateInputHTML("f-due", p.dueDate||todayISO())}</div>
+        <div class="field"><label>تاریخ صدور</label><input id="f-date" type="date" value="${p.issueDate||p.date||todayISO()}"></div>
+        <div class="field"><label>تاریخ سررسید</label><input id="f-due" type="date" value="${p.dueDate||todayISO()}"></div>
         <div class="field"><label>شماره چک</label><input id="f-check-num" value="${esc(p.checkNumber||'')}"></div>
         <div class="field"><label>بانک</label><input id="f-bank" value="${esc(p.bank||'')}"></div>
         <div class="field"><label>توضیح</label><input id="f-note" value="${esc(p.note||'')}"></div>
@@ -2159,7 +2159,7 @@ function openSupplierDetail(sid){
         openSheet(`
           <h3>برگشت خرید از ${esc(s.name)}</h3>
           <div class="empty" style="padding:0 0 8px;text-align:right;">${faDate(p.date)}${retLinesLabel} — مبلغ کل: ${toman(p.amount)} ت${returnedAmountSoFar>0?` — قبلاً برگشت‌شده: ${toman(returnedAmountSoFar)} ت`:''}</div>
-          <div class="field"><label>تاریخ برگشت</label>${shamsiDateInputHTML("f-ret-date", todayISO())}</div>
+          <div class="field"><label>تاریخ برگشت</label><input id="f-ret-date" type="date" value="${todayISO()}"></div>
           <div id="ret-item-rows">
           ${p.items.map(it=>{
             const remLineQty = purchaseLineRemainingQty(p, it.id);
@@ -2223,7 +2223,7 @@ function openSupplierDetail(sid){
       openSheet(`
         <h3>برگشت خرید از ${esc(s.name)}</h3>
         <div class="empty" style="padding:0 0 8px;text-align:right;">${faDate(p.date)}${p.productId?` — ${esc((data.products.find(x=>x.id===p.productId)||{}).name||'')}`:''}${retLinesLabel} — مبلغ کل: ${toman(p.amount)} ت${p.productId?` (${p.qty})`:''}${returnedAmountSoFar>0?` — قبلاً برگشت‌شده: ${toman(returnedAmountSoFar)} ت`:''}</div>
-        <div class="field"><label>تاریخ برگشت</label>${shamsiDateInputHTML("f-ret-date", todayISO())}</div>
+        <div class="field"><label>تاریخ برگشت</label><input id="f-ret-date" type="date" value="${todayISO()}"></div>
         ${p.productId?`<div class="field"><label>مقدار برگشتی (حداکثر ${remainingQty})</label><input id="f-ret-qty" type="text" inputmode="decimal"></div>`:''}
         <div class="field"><label>مبلغ برگشتی (تومان، حداکثر ${toman(remainingAmount)})</label><input id="f-ret-amount" type="text" inputmode="decimal"></div>
         <div class="btn-row"><button class="btn" id="save-return">ثبت برگشت</button></div>
@@ -2486,6 +2486,7 @@ function openSupplierDetail(sid){
       // ---- Phase A: generate entities ----
       const products = [];
       for(let i=0;i<12;i++){
+        const seedQty = 100 + i*5;
         const p = {
           id: uid(),
           name: QA_MARKER+' کالا '+(i+1),
@@ -2494,15 +2495,18 @@ function openSupplierDetail(sid){
           wholesale: 12000 + i*600,
           retail: 15000 + i*700,
           sell: 15000 + i*700,
-          stockQty: 100 + i*5,
-          stockLog: [{id:uid(), date:todayISO(), type:'in', qty:100+i*5, note:'QA seed'}],
+          stockQty: 0,
+          stockLog: [],
           packageWeight: 1,
           lowStockThreshold: 5,
         };
         data.products.push(p);
         products.push(p);
+        // Current architecture: stockQty alone is not enough for sales — open FIFO layer required
+        qaAddStockWithLayer(p, seedQty, p.buy, 'QA seed');
       }
       rec(assert(products.length===12, 'Generate 12 products'));
+      qaAssertFifoHealthy(rec, products, 'after product seed');
 
       const customers = [];
       for(let i=0;i<15;i++){
@@ -2546,13 +2550,14 @@ function openSupplierDetail(sid){
         const amount = qty * prod.buy;
         const date = todayISO();
         s.purchases = s.purchases||[];
-        s.purchases.push({id:uid(), date, amount, desc:'QA purchase', productId:prod.id, qty});
-        prod.stockQty = (prod.stockQty||0) + qty;
-        prod.stockLog = prod.stockLog||[];
-        prod.stockLog.push({id:uid(), date, type:'in', qty, note:'خرید از '+s.name});
+        // Production path: applyPurchaseStockEffects creates stockQty + FIFO layer
+        const purchase = {id:uid(), date, amount, desc:'QA purchase', productId:prod.id, qty};
+        s.purchases.push(purchase);
+        applyPurchaseStockEffects(purchase, s.name);
       }
       await saveData();
       rec(assert(true, 'Generate 20 purchases with stock increase'));
+      qaAssertFifoHealthy(rec, products, 'after purchases');
 
       // verify supplier balances after purchases
       for(const s of suppliers){
@@ -2569,8 +2574,8 @@ function openSupplierDetail(sid){
         const c = customers[i % customers.length];
         const prod = products[i % products.length];
         const qty = 1 + (i%3);
-        if((prod.stockQty||0) < qty){
-          prod.stockQty = (prod.stockQty||0) + qty + 10;
+        if((prod.stockQty||0) < qty || (typeof fifoAvailableQty==='function' && fifoAvailableQty(prod.id) < qty)){
+          qaAddStockWithLayer(prod, qty + 10, prod.buy, 'QA top-up before sale');
         }
         const price = prod.retail||prod.sell||0;
         const itemDiscount = (i%5===0)?500:0;
@@ -2619,7 +2624,19 @@ function openSupplierDetail(sid){
         const recomputed = inv.items.reduce((s,it)=>s+it.qty*it.price-(it.discount||0),0) - (inv.discount||0);
         rec(assert(approxEq(inv.total, Math.max(0,recomputed)), 'Invoice total #'+inv.number,
           'stored='+inv.total+' recomputed='+recomputed));
+        // FIFO: each sold line must carry costAllocations + COGS (current architecture)
+        for(const it of (inv.items||[])){
+          if(!it.productId || !(it.qty>0)) continue;
+          rec(assert(Array.isArray(it.costAllocations) && it.costAllocations.length>0,
+            'Invoice item FIFO costAllocations #'+inv.number, 'product='+it.productId));
+          rec(assert(typeof it.cogs==='number' && isFinite(it.cogs),
+            'Invoice item COGS finite #'+inv.number, 'cogs='+it.cogs));
+          const allocQty = it.costAllocations.reduce((s,a)=>s+(Number(a.qty)||0),0);
+          rec(assert(approxEq(allocQty, it.qty), 'FIFO alloc qty sums to line qty #'+inv.number,
+            'alloc='+allocQty+' qty='+it.qty));
+        }
       }
+      qaAssertFifoHealthy(rec, products, 'after invoices');
 
       for(const c of customers){
         const t = customerTotals(c.id);
@@ -2913,11 +2930,13 @@ function openSupplierDetail(sid){
   function qaBuildStressEntities(counters){
     const products=[], customers=[], suppliers=[];
     for(let i=0;i<200;i++){
+      const seedQty=200+(i%30)*3;
       const p={ id:uid(), name:QA_MARKER+' S-کالا '+i, category:CATEGORY_SUGGESTIONS[i%CATEGORY_SUGGESTIONS.length],
         buy:8000+(i%50)*300, wholesale:10000+(i%50)*350, retail:13000+(i%50)*400, sell:13000+(i%50)*400,
-        stockQty:200+(i%30)*3, stockLog:[{id:uid(), date:todayISO(), type:'in', qty:200+(i%30)*3, note:'QA stress seed'}],
+        stockQty:0, stockLog:[],
         packageWeight:1, lowStockThreshold:5 };
       data.products.push(p); products.push(p);
+      qaAddStockWithLayer(p, seedQty, p.buy, 'QA stress seed');
     }
     for(let i=0;i<500;i++){
       const c={ id:uid(), name:QA_MARKER+' S-مشتری '+i, ownerName:'مالک '+i, phone:'09'+(200000000+i),
@@ -2938,9 +2957,10 @@ function openSupplierDetail(sid){
     for(let i=0;i<n;i++){
       const s=ent.suppliers[i%ent.suppliers.length], prod=ent.products[i%ent.products.length];
       const qty=3+(i%6), amount=qty*prod.buy, date=todayISO();
-      s.purchases=s.purchases||[]; s.purchases.push({id:uid(), date, amount, desc:'QA-STRESS purchase', productId:prod.id, qty});
-      prod.stockQty=(prod.stockQty||0)+qty; prod.stockLog=prod.stockLog||[];
-      prod.stockLog.push({id:uid(), date, type:'in', qty, note:'خرید استرس از '+s.name});
+      s.purchases=s.purchases||[];
+      const purchase={id:uid(), date, amount, desc:'QA-STRESS purchase', productId:prod.id, qty};
+      s.purchases.push(purchase);
+      applyPurchaseStockEffects(purchase, s.name);
       counters.opsCount++;
     }
   }
@@ -2950,7 +2970,7 @@ function openSupplierDetail(sid){
     const itemN=1+(i%3); const items=[];
     for(let k=0;k<itemN;k++){
       const prod=ent.products[(i+k)%ent.products.length]; const qty=1+((i+k)%3);
-      if((prod.stockQty||0)<qty) prod.stockQty=(prod.stockQty||0)+qty+20;
+      if((prod.stockQty||0)<qty || (typeof fifoAvailableQty==='function' && fifoAvailableQty(prod.id)<qty)) qaAddStockWithLayer(prod, qty+20, prod.buy, 'QA stress top-up');
       items.push({productId:prod.id, name:prod.name, qty, price:prod.retail||prod.sell||0,
         buyPrice:prod.buy, discount:(i%7===0)?300:0, weight:(prod.packageWeight||0)*qty});
     }
@@ -2971,6 +2991,11 @@ function openSupplierDetail(sid){
     const bad=v=>v==null||typeof v!=='number'||!isFinite(v);
     for(const p of data.products){
       if(bad(p.stockQty)) rec(assert(false, 'Invariant stock invalid ['+tag+']: '+p.name, 'q='+p.stockQty));
+    }
+    // FIFO architecture invariants (additive)
+    for(const l of (data.inventoryLayers||[])){
+      if((l.qtyRemaining||0)<0) rec(assert(false, 'Invariant layer qtyRemaining negative ['+tag+']', String(l.id)));
+      if((l.qtyRemaining||0)>(l.qtyOriginal||0)+0.01) rec(assert(false, 'Invariant layer rem>original ['+tag+']', String(l.id)));
     }
     const g=globalTotals();
     rec(assert(!bad(g.totalProfit), 'Invariant totalProfit finite ['+tag+']'));
