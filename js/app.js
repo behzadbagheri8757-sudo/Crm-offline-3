@@ -2308,6 +2308,54 @@ function openSupplierDetail(sid){
     return Math.abs((a||0)-(b||0)) <= eps;
   }
 
+  /**
+   * QA seed/top-up aligned with current FIFO architecture.
+   * Creates an open inventory layer via production createInventoryLayer,
+   * and increments stockQty + stockLog to match.
+   * Signature used by all call sites: (prod, qty, unitCost, note)
+   */
+  function qaAddStockWithLayer(prod, qty, unitCost, note){
+    if(!prod || !(qty>0)) return;
+    const cost = (unitCost!=null && !isNaN(Number(unitCost))) ? Number(unitCost) : (prod.buy||0);
+    createInventoryLayer({
+      purchaseId: null,
+      productId: prod.id,
+      itemId: null,
+      qty: qty,
+      unitCost: cost,
+      source: 'manual',
+      date: todayISO(),
+      note: note || 'QA stock',
+    });
+    prod.stockQty = (prod.stockQty||0) + qty;
+    prod.stockLog = prod.stockLog||[];
+    prod.stockLog.push({id:uid(), date:todayISO(), type:'in', qty:qty, note: note||'QA stock'});
+  }
+
+  /**
+   * Additive FIFO health checks. Signature: (rec, products, tag)
+   * Does not remove or weaken existing assertions.
+   */
+  function qaAssertFifoHealthy(rec, products, tag){
+    if(typeof ensureInventoryLayers === 'function') ensureInventoryLayers();
+    rec(assert(Array.isArray(data.inventoryLayers), 'FIFO layers array exists ['+tag+']'));
+    let negLayer = null;
+    let overLayer = null;
+    for(const l of (data.inventoryLayers||[])){
+      if((l.qtyRemaining||0) < 0) negLayer = l;
+      if((l.qtyRemaining||0) > (l.qtyOriginal||0) + 0.01) overLayer = l;
+    }
+    rec(assert(!negLayer, 'No layer with negative qtyRemaining ['+tag+']', negLayer ? String(negLayer.id) : ''));
+    rec(assert(!overLayer, 'No layer qtyRemaining > qtyOriginal ['+tag+']', overLayer ? String(overLayer.id) : ''));
+    for(const p of (products||[])){
+      const stock = p.stockQty||0;
+      const fifo = (typeof fifoAvailableQty === 'function') ? fifoAvailableQty(p.id) : 0;
+      rec(assert(stock >= -0.01, 'Stock non-negative FIFO check ['+tag+']: '+p.name, 'qty='+stock));
+      rec(assert(fifo >= -0.01, 'FIFO available non-negative ['+tag+']: '+p.name, 'fifo='+fifo));
+      rec(assert(fifo <= stock + 0.01, 'FIFO <= stockQty ['+tag+']: '+p.name, 'fifo='+fifo+' stock='+stock));
+    }
+  }
+
   // --- inject hidden button + panel ---
   function ensureQAUI(){
     if(document.getElementById('qa-dev-btn')) return;
