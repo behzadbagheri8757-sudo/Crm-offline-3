@@ -136,14 +136,15 @@ async function exportBackupJSON(){
 function validateBackupShape(parsed){
   if(!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
   const arrays = ['products','customers','invoices','payments','checks','suppliers'];
-  // FIX 2: require at least one recognizable CRM backup field to actually be
-  // present as an array — rejects {}, {"foo":"bar"}, and other unrelated JSON
-  // that would otherwise pass just because every known key is "undefined".
-  // Every real backup from exportBackupJSON always includes all six arrays
-  // (even empty ones), so this stays backward-compatible with existing valid backups.
-  const hasRecognizedField = arrays.some(k => Array.isArray(parsed[k]));
-  if(!hasRecognizedField) return false;
-  return arrays.every(k => parsed[k]===undefined || Array.isArray(parsed[k]));
+  // FIX (independent audit, round 2): require ALL six known arrays to be
+  // present — not just "at least one" (previous FIX 2) or "undefined is ok"
+  // (original code). Every real backup produced by this app — old or new —
+  // always includes all six as arrays (even empty ones), because emptyData()
+  // and normalizeData() always populate them before export. So a real backup
+  // still passes, while a JSON missing a whole section (e.g. no "invoices"
+  // key at all) is now correctly rejected instead of silently wiping that
+  // section to [] on restore.
+  return arrays.every(k => Array.isArray(parsed[k]));
 }
 
 async function importBackupJSON(file){

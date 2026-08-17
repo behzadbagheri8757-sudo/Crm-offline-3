@@ -839,49 +839,132 @@ function openAddCustomer(editId){
   });
 }
 
+function linkedStockReturnsForInvoice(invoiceId){
+  return (data.payments||[]).filter(p=>
+    p.method==='return' &&
+    p.invoiceId===invoiceId &&
+    Array.isArray(p.returnItems) &&
+    p.returnItems.length>0
+  );
+}
+
+function invoiceHasLinkedStockReturn(invoiceId){
+  return linkedStockReturnsForInvoice(invoiceId).length>0;
+}
+
+function linkedReturnedQtyForInvoiceProduct(invoiceId, productId){
+  return linkedStockReturnsForInvoice(invoiceId).reduce((sum,p)=>
+    sum + (p.returnItems||[])
+      .filter(ri=>ri.productId===productId)
+      .reduce((s,ri)=>s+(Number(ri.qty)||0),0), 0);
+}
+
+function invoiceSoldQtyForProduct(invoice, productId){
+  return (invoice.items||[]).filter(it=>it.productId===productId)
+    .reduce((sum,it)=>sum+(Number(it.qty)||0),0);
+}
+
+function invoiceReturnAvailableQty(invoice, productId){
+  return Math.max(0,
+    invoiceSoldQtyForProduct(invoice, productId) -
+    linkedReturnedQtyForInvoiceProduct(invoice.id, productId)
+  );
+}
+
 function openAddTransaction(cid){
-  // وضعیت فرم بین رندرهای مجدد شیت نگه داشته می‌شود (همون الگوی openInvoiceForm)
+  // وضعیت فرم بین رندرهای مجدد شیت نگه داشته می‌شود.
   let method = 'cash';
   let amountStr = '';
   let dateStr = todayISO();
   let noteStr = '';
-  // ردیف‌های کالای برگشتی؛ فقط وقتی نوع تراکنش «برگشت از فروش» است استفاده می‌شود و کاملاً اختیاری است
+  let selectedInvoiceId = '';
   let returnRows = [];
+
+  function selectedInvoice(){
+    return selectedInvoiceId ? data.invoices.find(i=>i.id===selectedInvoiceId && i.customerId===cid) : null;
+  }
+
+  function invoiceOptionsHtml(){
+    const invoices = customerInvoices(cid).slice().sort((a,b)=>
+      new Date(b.date)-new Date(a.date) || String(b.number||'').localeCompare(String(a.number||''))
+    );
+    return invoices.map(inv=>
+      `<option value="${inv.id}" ${inv.id===selectedInvoiceId?'selected':''}>فاکتور #${esc(String(inv.number||'—'))} — ${faDate(inv.date)} — ${toman(inv.total||0)} ت</option>`
+    ).join('');
+  }
+
+  function invoiceProductOptionsHtml(productId){
+    const inv = selectedInvoice();
+    if(!inv) return '<option value="">ابتدا فاکتور را انتخاب کن</option>';
+    const products = [];
+    const seen = new Set();
+    (inv.items||[]).forEach(it=>{
+      if(!it.productId || seen.has(it.productId)) return;
+      seen.add(it.productId);
+      const prod = data.products.find(p=>p.id===it.productId);
+      if(prod) products.push({id:prod.id, name:prod.name});
+    });
+    if(!products.length) return '<option value="">این فاکتور کالای قابل برگشت ندارد</option>';
+    return products.map(p=>`<option value="${p.id}" ${p.id===productId?'selected':''}>${esc(p.name)}</option>`).join('');
+  }
+
+  function defaultReturnPrice(productId){
+    const inv = selectedInvoice();
+    const line = inv && (inv.items||[]).find(it=>it.productId===productId);
+    return line ? (line.price||0) : 0;
+  }
+
+  function currentReturnQtyForProduct(productId){
+    return returnRows.filter(r=>r.productId===productId).reduce((s,r)=>s+(Number(r.qty)||0),0);
+  }
 
   function returnItemsSectionHtml(){
     if(method !== 'return') return '';
-    if(data.products.length===0){
-      return `<div class="empty" style="padding:8px 0;">جنسی ثبت نشده. اگه این برگشت مربوط به کالای مشخصی نیست، فقط دکمه‌ی «ثبت» رو بزن؛ فقط حساب مشتری اصلاح می‌شه.</div>`;
+    const invoices = customerInvoices(cid);
+    if(!invoices.length){
+      return `<div class="empty" style="padding:8px 0;">برای برگشت کالایی، این مشتری هنوز فاکتوری ندارد. می‌توانی بدون افزودن کالا فقط اصلاح حساب را ثبت کنی.</div>`;
     }
+    const inv = selectedInvoice();
     return `
       <h2 class="section-title">کالای برگشتی (اختیاری)</h2>
-      <div class="empty" style="padding:0 0 8px;text-align:right;">اگه این برگشت واقعاً کالا داره، اینجا اضافه کن تا موجودی انبار هم خودکار زیاد بشه. اگه فقط اصلاح حساب مد نظرته، این بخش رو خالی بذار.</div>
-      <div id="return-items-wrap">${returnRows.map((r,idx)=>{
-        const available = productReturnAvailableQty(cid, r.productId);
-        const over = r.qty > available;
-        return `
-        <div class="field" style="display:flex;gap:6px;align-items:end;">
-          <div style="flex:2;">
-            <label>جنس</label>
-            <select data-ridx="${idx}" class="ret-product">
-              ${data.products.map(p=>`<option value="${p.id}" ${p.id===r.productId?'selected':''}>${esc(p.name)}</option>`).join('')}
-            </select>
+      <div class="field">
+        <label>فاکتور مرتبط (فقط همین مشتری)</label>
+        <select id="f-return-invoice">
+          <option value="">بدون فاکتور — فقط اصلاح حساب</option>
+          ${invoiceOptionsHtml()}
+        </select>
+      </div>
+      ${inv ? `
+        <div class="empty" style="padding:0 0 8px;text-align:right;">فقط کالاهای فاکتور #${esc(String(inv.number||'—'))} قابل انتخاب هستند.</div>
+        <div id="return-items-wrap">${returnRows.map((r,idx)=>{
+          const available = invoiceReturnAvailableQty(inv, r.productId);
+          const usedInForm = currentReturnQtyForProduct(r.productId);
+          const remainingForRow = Math.max(0, available - (usedInForm - (Number(r.qty)||0)));
+          const over = !(r.qty>0) || r.qty > remainingForRow;
+          return `
+          <div class="field" style="display:flex;gap:6px;align-items:end;">
+            <div style="flex:2;">
+              <label>جنس</label>
+              <select data-ridx="${idx}" class="ret-product">${invoiceProductOptionsHtml(r.productId)}</select>
+            </div>
+            <div style="flex:1;">
+              <label>تعداد</label>
+              <input type="text" inputmode="decimal" data-ridx="${idx}" class="ret-qty" value="${r.qty||''}">
+            </div>
+            <div style="flex:1;">
+              <label>قیمت واحد (اختیاری)</label>
+              <input type="text" inputmode="decimal" data-ridx="${idx}" class="ret-price" value="${r.price||''}">
+            </div>
+            <button class="btn small danger" data-ridx="${idx}" id="ret-del-${idx}" style="flex:0;">حذف</button>
           </div>
-          <div style="flex:1;">
-            <label>تعداد</label>
-            <input type="text" inputmode="decimal" data-ridx="${idx}" class="ret-qty" value="${r.qty||''}">
-          </div>
-          <div style="flex:1;">
-            <label>قیمت واحد (اختیاری)</label>
-            <input type="text" inputmode="decimal" data-ridx="${idx}" class="ret-price" value="${r.price||''}">
-          </div>
-          <button class="btn small danger" data-ridx="${idx}" id="ret-del-${idx}" style="flex:0;">حذف</button>
-        </div>
-        <div class="sub" style="margin:-6px 0 10px;${over?'color:var(--rust);':''}">
-          قابل برگشت طبق فروش‌های قبلی به این مشتری: ${available} عدد${over?' — ⚠️ تعداد وارد شده بیشتر از این مقدار است':''}
-        </div>`;
-      }).join('')}</div>
-      <button class="btn secondary small" id="add-return-row">+ افزودن کالای برگشتی</button>
+          <div class="sub" style="margin:-6px 0 10px;${over?'color:var(--rust);':''}">
+            قابل برگشت از این فاکتور برای این کالا: ${available} عدد${over?' — ⚠️ تعداد واردشده از سقف برگشت بیشتر است':''}
+          </div>`;
+        }).join('')}</div>
+        <button class="btn secondary small" id="add-return-row">+ افزودن کالای برگشتی</button>
+      ` : `
+        <div class="empty" style="padding:8px 0;">اگر کالا برمی‌گردد، یک فاکتور انتخاب کن و سپس کالاهای همان فاکتور را اضافه کن. خالی گذاشتن فاکتور یعنی Return فقط حسابی است.</div>
+      `}
     `;
   }
 
@@ -907,8 +990,9 @@ function openAddTransaction(cid){
 
     document.getElementById('f-method').addEventListener('change', e=>{
       method = e.target.value;
-      if(method==='return' && data.products.length && returnRows.length===0){
-        // یک ردیف خالی برای راحتی، ولی کاملاً اختیاری و قابل حذف
+      if(method!=='return'){
+        selectedInvoiceId = '';
+        returnRows = [];
       }
       renderSheet();
     });
@@ -916,16 +1000,37 @@ function openAddTransaction(cid){
     document.getElementById('f-amount').addEventListener('input', e=>{ amountStr = e.target.value; });
     document.getElementById('f-note').addEventListener('input', e=>{ noteStr = e.target.value; });
 
+    const invoiceSelect = document.getElementById('f-return-invoice');
+    if(invoiceSelect){
+      invoiceSelect.addEventListener('change', e=>{
+        const nextId = e.target.value;
+        if(nextId!==selectedInvoiceId && returnRows.length){
+          returnRows = [];
+        }
+        selectedInvoiceId = nextId;
+        renderSheet();
+      });
+    }
+
     const addBtn = document.getElementById('add-return-row');
     if(addBtn){
       addBtn.addEventListener('click', ()=>{
-        const dp = data.products[0];
-        returnRows.push({productId:dp.id, qty:1, price:dp.retail||dp.sell||0});
+        const inv = selectedInvoice();
+        if(!inv){ showToast('اول فاکتور مرتبط را انتخاب کن'); return; }
+        const usedProducts = new Set(returnRows.map(r=>r.productId));
+        const candidate = (inv.items||[]).find(it=>it.productId && !usedProducts.has(it.productId));
+        if(!candidate){ showToast('همه کالاهای این فاکتور در برگشت انتخاب شده‌اند'); return; }
+        const prod = data.products.find(p=>p.id===candidate.productId);
+        returnRows.push({productId:candidate.productId, qty:1, price:candidate.price||prod?.retail||prod?.sell||0});
         renderSheet();
       });
     }
     document.querySelectorAll('.ret-product').forEach(el=>el.addEventListener('change', e=>{
-      returnRows[e.target.dataset.ridx].productId = e.target.value;
+      const idx = Number(e.target.dataset.ridx);
+      const row = returnRows[idx];
+      if(!row) return;
+      row.productId = e.target.value;
+      row.price = defaultReturnPrice(row.productId);
       renderSheet();
     }));
     document.querySelectorAll('.ret-qty').forEach(el=>el.addEventListener('input', e=>{
@@ -949,37 +1054,67 @@ function openAddTransaction(cid){
         if(amount<=0){ showToast('مبلغ رو وارد کن'); throw new Error('validation'); }
 
         let returnItems = [];
+        let returnInvoiceId;
         if(method==='return'){
-          returnItems = returnRows
-            .filter(r=>r.productId && r.qty>0)
-            .map(r=>{
-              const prod = data.products.find(p=>p.id===r.productId);
-              return {productId:r.productId, name:prod?prod.name:'', qty:r.qty, price:r.price||0};
-            });
-          // هماهنگی مبلغ برگشت با «مقدار × قیمت واحد» کالاهای برگشتی (فقط وقتی قیمت واحدی وارد شده باشد)
+          if(returnRows.some(r=>!r.productId || !(Number(r.qty)>0))){
+            showToast('برای هر کالای برگشتی، کالا باید معتبر و تعداد باید بیشتر از صفر باشد');
+            throw new Error('validation');
+          }
+          returnItems = returnRows.map(r=>{
+            const prod = data.products.find(p=>p.id===r.productId);
+            return {productId:r.productId, name:prod?prod.name:'', qty:Number(r.qty), price:Number(r.price)||0};
+          });
+
+          // بدون کالا = Account-only Return؛ مستقل از فاکتور و بدون invoiceId باقی می‌ماند.
+          if(returnItems.length){
+            const inv = selectedInvoice();
+            if(!inv){ showToast('برای برگشت کالایی باید یک فاکتور مرتبط انتخاب کنی'); throw new Error('validation'); }
+            returnInvoiceId = inv.id;
+
+            const requestedByProduct = {};
+            for(const ri of returnItems){
+              if(!(ri.qty>0)){ showToast('تعداد کالای برگشتی باید بیشتر از صفر باشد'); throw new Error('validation'); }
+              requestedByProduct[ri.productId] = (requestedByProduct[ri.productId]||0) + Number(ri.qty);
+            }
+            for(const [productId, requestedQty] of Object.entries(requestedByProduct)){
+              const soldQty = invoiceSoldQtyForProduct(inv, productId);
+              const returnedQty = linkedReturnedQtyForInvoiceProduct(inv.id, productId);
+              const available = Math.max(0, soldQty-returnedQty);
+              if(!(soldQty>0)){
+                showToast('این کالا در فاکتور انتخاب‌شده وجود ندارد');
+                throw new Error('validation');
+              }
+              if(requestedQty>available){
+                const prod = data.products.find(p=>p.id===productId);
+                showToast(`«${prod?prod.name:productId}»: حداکثر ${available} عدد از این فاکتور قابل برگشت است`);
+                throw new Error('validation');
+              }
+            }
+          }
+
           const expectedReturnAmount = returnItems.reduce((s,ri)=>s+(ri.qty*(ri.price||0)),0);
           if(expectedReturnAmount>0 && Math.abs(expectedReturnAmount-amount)>1){
             const proceedAmount = confirm('⚠️ مبلغ واردشده با «مقدار × قیمت واحد» کالاهای برگشتی هم‌خوانی ندارد.\n\nمبلغ واردشده: '+toman(amount)+' تومان\nمبلغ منطقی طبق کالاها: '+toman(expectedReturnAmount)+' تومان\n\nمطمئنی می‌خوای همینطور ثبت کنی؟');
             if(!proceedAmount) throw new Error('validation');
           }
-          // بررسی برگشت بیشتر از فروش قبلی؛ فقط هشدار می‌دهیم، جلوی ثبت را کاملاً نمی‌بندیم
-          const overItems = returnItems.filter(ri=>ri.qty > productReturnAvailableQty(cid, ri.productId));
-          if(overItems.length){
-            const lines = overItems.map(ri=>{
-              const available = productReturnAvailableQty(cid, ri.productId);
-              return `«${ri.name}»: برگشت ${ri.qty} عدد، ولی طبق فروش‌های قبلی فقط ${available} عدد قابل برگشت است`;
-            }).join('\n');
-            const proceed = confirm('⚠️ این برگشت از فروش‌های ثبت‌شده‌ی این مشتری بیشتر است:\n\n'+lines+'\n\nمطمئنی می‌خوای همینطور ثبت کنی؟');
-            if(!proceed) throw new Error('validation');
-          }
         }
 
         const payment = {id:uid(), customerId:cid, date, amount, method, note, returnItems};
+        if(returnInvoiceId) payment.invoiceId = returnInvoiceId;
+        // اسنپ‌شات کامل قبل از هر mutation — همان الگوی ثبت/ویرایش فاکتور —
+        // چون این مسیر هم برای «برگشت از فروش» موجودی/لایه‌های FIFO را تغییر می‌دهد.
+        const previousData = JSON.parse(JSON.stringify(data));
         data.payments.push(payment);
         if(method==='return' && returnItems.length){
           applyReturnStockEffects(returnItems, date, payment);
         }
-        await saveData(); openCustomerDetail(cid); render(); showToast('ثبت شد');
+        try{
+          await saveData();
+        }catch(saveErr){
+          data = previousData;
+          throw saveErr;
+        }
+        openCustomerDetail(cid); render(); showToast('ثبت شد');
       });
     });
   }
@@ -1173,11 +1308,25 @@ function openInvoiceDetail(invId, cid){
   document.getElementById('edit-invoice').addEventListener('click', ()=>openEditInvoice(inv.id, cid));
   document.getElementById('del-invoice').addEventListener('click', async (e)=>{
     await withSubmitGuard(e.currentTarget, async ()=>{
+      if(invoiceHasLinkedStockReturn(inv.id)){
+        showToast('این فاکتور دارای برگشت از فروش است و برای حفظ یکپارچگی موجودی قابل حذف نیست');
+        throw new Error('validation');
+      }
       if(!confirm('با حذف این فاکتور، موجودی انبار و حساب مشتری اصلاح خواهد شد. ادامه می‌دهید؟')) throw new Error('validation');
+      // اسنپ‌شات کامل قبل از هر mutation — همان الگوی ثبت/ویرایش فاکتور —
+      // تا اگر saveData() شکست بخورد، data در حافظه دقیقاً به حالت قبل از
+      // حذف برگردد و با آخرین نسخه‌ی موفق در IndexedDB ناهماهنگ نماند.
+      const previousData = JSON.parse(JSON.stringify(data));
       revertInvoiceStockEffects(inv);
       revertInvoicePayments(inv);
       data.invoices = data.invoices.filter(x=>x.id!==invId);
-      await saveData(); openCustomerDetail(cid); render(); showToast('فاکتور حذف شد؛ موجودی و حساب مشتری اصلاح شد');
+      try{
+        await saveData();
+      }catch(saveErr){
+        data = previousData;
+        throw saveErr;
+      }
+      openCustomerDetail(cid); render(); showToast('فاکتور حذف شد؛ موجودی و حساب مشتری اصلاح شد');
     });
   });
 }
@@ -1189,6 +1338,10 @@ function openAddInvoice(cid){
 function openEditInvoice(invId, cid){
   const inv = data.invoices.find(x=>x.id===invId);
   if(!inv) return;
+  if(invoiceHasLinkedStockReturn(inv.id)){
+    showToast('این فاکتور دارای برگشت از فروش است و برای حفظ یکپارچگی موجودی قابل ویرایش نیست');
+    return;
+  }
   openInvoiceForm(cid, inv);
 }
 
@@ -1660,6 +1813,12 @@ function openInvoiceForm(cid, editInv){
       const newBalance = prevBalance + total - paid;
 
       if(editInv){
+        // دفاع دوم: حتی اگر فرم ویرایش قبلاً باز شده باشد، قبل از هر revert دوباره dependency را بررسی کن.
+        if(invoiceHasLinkedStockReturn(editInv.id)){
+          showToast('این فاکتور دارای برگشت از فروش است و برای حفظ یکپارچگی موجودی قابل ویرایش نیست');
+          btn.disabled = false;
+          return;
+        }
         if(!confirm('با ویرایش این فاکتور، موجودی انبار و حساب مشتری اصلاح خواهد شد. ادامه می‌دهید؟')){ btn.disabled = false; return; }
 
         // اسنپ‌شات کامل قبل از هر mutation — اگر saveData() در انتها شکست بخورد،
@@ -1949,8 +2108,18 @@ function openSupplierDetail(sid){
           };
         });
         const purchase = {id:uid(), date, amount, desc, productId:'', qty:0, items};
+        // اسنپ‌شات کامل قبل از هر mutation — همان الگوی ثبت/ویرایش فاکتور.
+        const previousData = JSON.parse(JSON.stringify(data));
         s.purchases.push(purchase);
         applyPurchaseStockEffects(purchase, s.name);
+        try{
+          await saveData();
+        }catch(saveErr){
+          data = previousData;
+          throw saveErr;
+        }
+        openSupplierDetail(sid); render(); showToast('خرید ثبت شد');
+        return;
       } else {
         const amount = numVal(document.getElementById('f-amount'));
         const productId = document.getElementById('f-product').value;
@@ -1963,10 +2132,18 @@ function openSupplierDetail(sid){
           // قیمت واحد ضمنی = مبلغ/تعداد؛ با amount>0 و qty>0 خودبه‌خود >0 است
         }
         const purchase = {id:uid(), date, amount, desc, productId, qty};
+        // اسنپ‌شات کامل قبل از هر mutation — همان الگوی ثبت/ویرایش فاکتور.
+        const previousData = JSON.parse(JSON.stringify(data));
         s.purchases.push(purchase);
         applyPurchaseStockEffects(purchase, s.name);
+        try{
+          await saveData();
+        }catch(saveErr){
+          data = previousData;
+          throw saveErr;
+        }
+        openSupplierDetail(sid); render(); showToast('خرید ثبت شد');
       }
-      await saveData(); openSupplierDetail(sid); render(); showToast('خرید ثبت شد');
       });
     });
   });
@@ -2208,6 +2385,8 @@ function openSupplierDetail(sid){
           if(!confirm('با ثبت این برگشت، موجودی انبار و بدهی به تامین‌کننده اصلاح خواهد شد. ادامه می‌دهید؟')) throw new Error('validation');
           const totalQty = lineReturns.reduce((a,l)=>a+l.qty,0);
           const retLines = lineReturns.map(l=>({productId:l.productId, qty:l.qty, itemId:l.itemId}));
+          // اسنپ‌شات کامل قبل از هر mutation — همان الگوی ثبت/ویرایش فاکتور.
+          const previousData = JSON.parse(JSON.stringify(data));
           const retResult = applyPurchaseReturnStockEffects(p, retLines, s.name, date);
           if(!retResult.ok){ alert(retResult.error||'برگشت خرید ممکن نشد'); throw new Error('validation'); }
           p.returns = p.returns||[];
@@ -2215,7 +2394,13 @@ function openSupplierDetail(sid){
             id:uid(), date, qty:totalQty, amount:totalAmount,
             items: lineReturns.map(l=>({itemId:l.itemId, productId:l.productId, qty:l.qty, amount:Math.round(l.qty*l.unitCost)})),
           });
-          await saveData(); openSupplierDetail(sid); render(); showToast('برگشت خرید ثبت شد');
+          try{
+            await saveData();
+          }catch(saveErr){
+            data = previousData;
+            throw saveErr;
+          }
+          openSupplierDetail(sid); render(); showToast('برگشت خرید ثبت شد');
           });
         });
         return;
@@ -2257,13 +2442,21 @@ function openSupplierDetail(sid){
         }
         if(amount>liveRemainingAmount){ alert('مبلغ برگشتی از مبلغ باقیمانده‌ی این خرید بیشتره.\n\nمبلغ باقیمانده قابل‌برگشت: '+toman(liveRemainingAmount)+' تومان'); throw new Error('validation'); }
         if(!confirm((p.productId?'با ثبت این برگشت، موجودی انبار و بدهی به تامین‌کننده اصلاح خواهد شد.':'با ثبت این برگشت، فقط بدهی به تامین‌کننده کم می‌شود (موجودی خودکار اصلاح نمی‌شود).')+' ادامه می‌دهید؟')) throw new Error('validation');
+        // اسنپ‌شات کامل قبل از هر mutation — همان الگوی ثبت/ویرایش فاکتور.
+        const previousData = JSON.parse(JSON.stringify(data));
         if(p.productId && qty>0){
           const retResult = applyPurchaseReturnStockEffects(p, [{productId:p.productId, qty}], s.name, date);
           if(!retResult.ok){ alert(retResult.error||'برگشت خرید ممکن نشد'); throw new Error('validation'); }
         }
         p.returns = p.returns||[];
         p.returns.push({id:uid(), date, qty, amount});
-        await saveData(); openSupplierDetail(sid); render(); showToast('برگشت خرید ثبت شد');
+        try{
+          await saveData();
+        }catch(saveErr){
+          data = previousData;
+          throw saveErr;
+        }
+        openSupplierDetail(sid); render(); showToast('برگشت خرید ثبت شد');
         });
       });
     });

@@ -258,6 +258,16 @@ async function convertProspectToCustomer(shopId){
       if(typeof saveData==='function') await saveData();
       return { customerId: already.id, created: false, customer: already };
     }
+    // FIX (independent audit): `dup` above was computed but never used, so a
+    // customer with the exact same active name could be created a second
+    // time. Reuse the existing customer instead of creating a duplicate —
+    // no merge, no id change, no touching of its balance/history/invoices.
+    if(dup){
+      shop.linkedCustomerId = dup.id;
+      shop.status = 'converted';
+      await persistProspectShop(shop);
+      return { customerId: dup.id, created: false, customer: dup };
+    }
   }
 
   const region = prospectRouteName(shop.routeId);
