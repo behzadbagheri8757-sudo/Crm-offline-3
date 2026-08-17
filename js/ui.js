@@ -231,127 +231,213 @@ function isSameJalaliMonth(iso, ref){
 }
 
 /**
- * HTML for a Shamsi date field.
- * Looks like a single native-style input; tap opens year/month/day panel.
+ * HTML for a Shamsi date field — single field like native input.
+ * Tap opens iOS-style bottom sheet with scroll wheels (Jalali Y/M/D).
  * Hidden input keeps Gregorian YYYY-MM-DD (same id) for existing .value readers.
+ * NOTE: Native iOS <input type="date"> cannot use Jalali; this is the closest safe UX.
  */
 function shamsiDateInputHTML(id, valueISO){
   const iso = (valueISO && parseISODateParts(valueISO)) ? String(valueISO).slice(0,10) : todayISO();
   const j = isoToJalali(iso) || gregorianToJalali(
     new Date().getFullYear(), new Date().getMonth()+1, new Date().getDate()
   );
-  const jy = j[0], jm = j[1], jd = j[2];
-  const label = enToFaDigits(jy + '/' + jm + '/' + jd);
-  const y0 = jy - 15, y1 = jy + 5;
-  let yOpts = '';
-  for(let y = y1; y >= y0; y--){
-    yOpts += `<option value="${y}" ${y===jy?'selected':''}>${enToFaDigits(String(y))}</option>`;
-  }
-  let mOpts = '';
-  for(let m = 1; m <= 12; m++){
-    mOpts += `<option value="${m}" ${m===jm?'selected':''}>${SHAMSI_MONTH_NAMES[m-1]}</option>`;
-  }
-  const dim = jalaliMonthLength(jy, jm);
-  let dOpts = '';
-  for(let d = 1; d <= dim; d++){
-    dOpts += `<option value="${d}" ${d===jd?'selected':''}>${enToFaDigits(String(d))}</option>`;
-  }
+  const label = enToFaDigits(j[0] + '/' + j[1] + '/' + j[2]);
   return `<div class="shamsi-date" data-shamsi-root="1">
     <input type="hidden" id="${esc(id)}" value="${esc(iso)}" data-shamsi-hidden="1">
-    <button type="button" class="shamsi-date-trigger" data-shamsi-trigger="1" aria-label="انتخاب تاریخ شمسی">${label}</button>
-    <div class="shamsi-date-panel" data-shamsi-panel="1" hidden>
-      <div class="shamsi-date-row">
-        <select class="shamsi-y" aria-label="سال شمسی" data-shamsi-part="y">${yOpts}</select>
-        <select class="shamsi-m" aria-label="ماه شمسی" data-shamsi-part="m">${mOpts}</select>
-        <select class="shamsi-d" aria-label="روز شمسی" data-shamsi-part="d">${dOpts}</select>
-      </div>
-    </div>
+    <input type="text" class="shamsi-date-field" data-shamsi-field="1" readonly inputmode="none" value="${esc(label)}" aria-label="تاریخ شمسی">
   </div>`;
 }
 
-/** Rebuild day options + sync hidden Gregorian value + trigger label. */
-function syncShamsiDateRoot(root){
-  if(!root) return;
-  const hid = root.querySelector('[data-shamsi-hidden]');
-  const yEl = root.querySelector('.shamsi-y');
-  const mEl = root.querySelector('.shamsi-m');
-  const dEl = root.querySelector('.shamsi-d');
-  const trigger = root.querySelector('[data-shamsi-trigger]');
-  if(!hid || !yEl || !mEl || !dEl) return;
-  let jy = parseInt(yEl.value, 10);
-  let jm = parseInt(mEl.value, 10);
-  let jd = parseInt(dEl.value, 10);
-  if(!jy || !jm) return;
-  const dim = jalaliMonthLength(jy, jm);
-  if(jd > dim) jd = dim;
-  if(jd < 1) jd = 1;
-  if(dEl.options.length !== dim || parseInt(dEl.options[dEl.options.length-1].value,10) !== dim){
-    let dOpts = '';
-    for(let d = 1; d <= dim; d++){
-      dOpts += `<option value="${d}" ${d===jd?'selected':''}>${enToFaDigits(String(d))}</option>`;
-    }
-    dEl.innerHTML = dOpts;
-  } else {
-    dEl.value = String(jd);
-  }
-  const iso = jalaliToISO(jy, jm, jd);
-  const prev = hid.value;
-  hid.value = iso;
-  if(trigger){
-    trigger.textContent = enToFaDigits(jy + '/' + jm + '/' + jd);
-  }
-  if(prev !== iso){
-    try{
-      hid.dispatchEvent(new Event('input', { bubbles: true }));
-      hid.dispatchEvent(new Event('change', { bubbles: true }));
-    }catch(e){}
-  }
+function _shamsiPadWheel(col, countBefore){
+  // spacer items so first/last can center in the highlight band
+  let html = '';
+  for(let i = 0; i < countBefore; i++) html += '<div class="shamsi-wheel-item shamsi-wheel-spacer" aria-hidden="true"></div>';
+  return html;
 }
 
-/** One-time document delegation for Shamsi selects + trigger toggle. */
+function _shamsiBuildWheelHTML(part, values, selected, labels){
+  // values: array of numbers; labels optional parallel strings
+  const spacers = 2;
+  let html = _shamsiPadWheel(part, spacers);
+  for(let i = 0; i < values.length; i++){
+    const v = values[i];
+    const lab = labels ? labels[i] : enToFaDigits(String(v));
+    const sel = (v === selected) ? ' data-selected="1"' : '';
+    html += `<div class="shamsi-wheel-item" data-v="${v}"${sel}>${lab}</div>`;
+  }
+  html += _shamsiPadWheel(part, spacers);
+  return html;
+}
+
+function _shamsiItemH(){
+  return 36;
+}
+
+function _shamsiScrollToValue(col, value){
+  if(!col) return;
+  const item = col.querySelector('.shamsi-wheel-item[data-v="' + value + '"]');
+  if(!item) return;
+  const h = _shamsiItemH();
+  // center item in column (2 spacers * h offset already in DOM)
+  const top = item.offsetTop - (col.clientHeight / 2) + (h / 2);
+  col.scrollTop = Math.max(0, top);
+}
+
+function _shamsiReadWheel(col){
+  if(!col) return null;
+  const h = _shamsiItemH();
+  const mid = col.scrollTop + col.clientHeight / 2;
+  const items = col.querySelectorAll('.shamsi-wheel-item[data-v]');
+  let best = null, bestDist = Infinity;
+  items.forEach(function(it){
+    const c = it.offsetTop + h / 2;
+    const d = Math.abs(c - mid);
+    if(d < bestDist){ bestDist = d; best = it; }
+  });
+  if(!best) return null;
+  return parseInt(best.getAttribute('data-v'), 10);
+}
+
+function _shamsiSnapWheel(col){
+  const v = _shamsiReadWheel(col);
+  if(v != null) _shamsiScrollToValue(col, v);
+  return v;
+}
+
+function _shamsiFillDayCol(dayCol, jy, jm, jd){
+  const dim = jalaliMonthLength(jy, jm);
+  if(jd > dim) jd = dim;
+  const vals = [];
+  for(let d = 1; d <= dim; d++) vals.push(d);
+  dayCol.innerHTML = _shamsiBuildWheelHTML('d', vals, jd, null);
+  _shamsiScrollToValue(dayCol, jd);
+  return jd;
+}
+
+function openShamsiPicker(fieldEl){
+  const root = fieldEl.closest('[data-shamsi-root]');
+  if(!root) return;
+  const hid = root.querySelector('[data-shamsi-hidden]');
+  if(!hid) return;
+  const iso = hid.value || todayISO();
+  const j = isoToJalali(iso) || gregorianToJalali(
+    new Date().getFullYear(), new Date().getMonth()+1, new Date().getDate()
+  );
+  let jy = j[0], jm = j[1], jd = j[2];
+
+  // remove any existing sheet
+  const prev = document.getElementById('shamsi-picker-sheet');
+  if(prev) prev.remove();
+
+  const yVals = [];
+  for(let y = jy + 5; y >= jy - 15; y--) yVals.push(y);
+  const mVals = [1,2,3,4,5,6,7,8,9,10,11,12];
+  const mLabs = SHAMSI_MONTH_NAMES.slice();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'shamsi-picker-sheet';
+  overlay.className = 'shamsi-sheet-overlay';
+  overlay.innerHTML =
+    '<div class="shamsi-sheet" role="dialog" aria-label="انتخاب تاریخ شمسی">' +
+      '<div class="shamsi-sheet-toolbar">' +
+        '<button type="button" class="shamsi-sheet-btn" data-shamsi-cancel="1">لغو</button>' +
+        '<span class="shamsi-sheet-title">تاریخ</span>' +
+        '<button type="button" class="shamsi-sheet-btn shamsi-sheet-done" data-shamsi-done="1">تأیید</button>' +
+      '</div>' +
+      '<div class="shamsi-wheels-wrap">' +
+        '<div class="shamsi-wheels-highlight" aria-hidden="true"></div>' +
+        '<div class="shamsi-wheels">' +
+          '<div class="shamsi-wheel" data-shamsi-wheel="y"></div>' +
+          '<div class="shamsi-wheel" data-shamsi-wheel="m"></div>' +
+          '<div class="shamsi-wheel" data-shamsi-wheel="d"></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  document.body.appendChild(overlay);
+
+  const yCol = overlay.querySelector('[data-shamsi-wheel="y"]');
+  const mCol = overlay.querySelector('[data-shamsi-wheel="m"]');
+  const dCol = overlay.querySelector('[data-shamsi-wheel="d"]');
+
+  yCol.innerHTML = _shamsiBuildWheelHTML('y', yVals, jy, yVals.map(function(y){ return enToFaDigits(String(y)); }));
+  mCol.innerHTML = _shamsiBuildWheelHTML('m', mVals, jm, mLabs);
+  _shamsiFillDayCol(dCol, jy, jm, jd);
+
+  // initial scroll after layout
+  requestAnimationFrame(function(){
+    _shamsiScrollToValue(yCol, jy);
+    _shamsiScrollToValue(mCol, jm);
+    _shamsiScrollToValue(dCol, jd);
+  });
+
+  let scrollTimers = {};
+  function onWheelScroll(ev){
+    const col = ev.currentTarget;
+    const part = col.getAttribute('data-shamsi-wheel');
+    clearTimeout(scrollTimers[part]);
+    scrollTimers[part] = setTimeout(function(){
+      const v = _shamsiSnapWheel(col);
+      if(part === 'y' && v != null) jy = v;
+      if(part === 'm' && v != null) jm = v;
+      if(part === 'd' && v != null) jd = v;
+      if(part === 'y' || part === 'm'){
+        jd = _shamsiFillDayCol(dCol, jy, jm, jd);
+      }
+    }, 80);
+  }
+  yCol.addEventListener('scroll', onWheelScroll, { passive: true });
+  mCol.addEventListener('scroll', onWheelScroll, { passive: true });
+  dCol.addEventListener('scroll', onWheelScroll, { passive: true });
+
+  function close(){
+    overlay.remove();
+  }
+
+  function apply(){
+    jy = _shamsiSnapWheel(yCol) || jy;
+    jm = _shamsiSnapWheel(mCol) || jm;
+    jd = _shamsiSnapWheel(dCol) || jd;
+    const dim = jalaliMonthLength(jy, jm);
+    if(jd > dim) jd = dim;
+    const newIso = jalaliToISO(jy, jm, jd);
+    const prev = hid.value;
+    hid.value = newIso;
+    const field = root.querySelector('[data-shamsi-field]');
+    if(field) field.value = enToFaDigits(jy + '/' + jm + '/' + jd);
+    if(prev !== newIso){
+      try{
+        hid.dispatchEvent(new Event('input', { bubbles: true }));
+        hid.dispatchEvent(new Event('change', { bubbles: true }));
+      }catch(e){}
+    }
+    close();
+  }
+
+  overlay.addEventListener('click', function(e){
+    if(e.target === overlay) close();
+  });
+  overlay.querySelector('[data-shamsi-cancel]').addEventListener('click', function(e){
+    e.preventDefault(); close();
+  });
+  overlay.querySelector('[data-shamsi-done]').addEventListener('click', function(e){
+    e.preventDefault(); apply();
+  });
+}
+
+/** Tap on Shamsi date field opens wheel sheet (document delegation). */
 (function bindShamsiDateDelegation(){
   if(typeof document === 'undefined') return;
-  function onChange(e){
-    const t = e.target;
-    if(!t || !t.getAttribute || !t.getAttribute('data-shamsi-part')) return;
-    const root = t.closest('[data-shamsi-root]');
-    if(root) syncShamsiDateRoot(root);
-  }
   function onClick(e){
     const t = e.target;
     if(!t || !t.closest) return;
-    const trigger = t.closest('[data-shamsi-trigger]');
-    if(trigger){
+    const field = t.closest('[data-shamsi-field]');
+    if(field){
       e.preventDefault();
-      const root = trigger.closest('[data-shamsi-root]');
-      if(!root) return;
-      const panel = root.querySelector('[data-shamsi-panel]');
-      if(!panel) return;
-      const open = panel.hasAttribute('hidden');
-      // close other open shamsi panels
-      document.querySelectorAll('[data-shamsi-panel]').forEach(function(p){
-        if(p !== panel) p.setAttribute('hidden', '');
-      });
-      document.querySelectorAll('[data-shamsi-trigger]').forEach(function(b){
-        if(b !== trigger) b.classList.remove('open');
-      });
-      if(open){
-        panel.removeAttribute('hidden');
-        trigger.classList.add('open');
-      } else {
-        panel.setAttribute('hidden', '');
-        trigger.classList.remove('open');
-      }
-      return;
-    }
-    // click outside closes panels
-    if(!t.closest('[data-shamsi-root]')){
-      document.querySelectorAll('[data-shamsi-panel]').forEach(function(p){ p.setAttribute('hidden', ''); });
-      document.querySelectorAll('[data-shamsi-trigger].open').forEach(function(b){ b.classList.remove('open'); });
+      openShamsiPicker(field);
     }
   }
   function bind(){
-    document.addEventListener('change', onChange, true);
     document.addEventListener('click', onClick, true);
   }
   if(document.readyState === 'loading'){
@@ -360,6 +446,7 @@ function syncShamsiDateRoot(root){
     bind();
   }
 })();
+
 
 function daysAgo(iso){
   if(!iso) return Infinity;
