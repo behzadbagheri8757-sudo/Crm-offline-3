@@ -224,10 +224,17 @@ function lowStockProducts(){
 }
 
 function isSameMonth(iso, ref){
+  // Shamsi/Jalali month for «این ماه» — storage remains Gregorian YYYY-MM-DD
+  if(typeof isSameJalaliMonth === 'function') return isSameJalaliMonth(iso, ref);
   const d = new Date(iso), r = ref;
   return d.getFullYear()===r.getFullYear() && d.getMonth()===r.getMonth();
 }
 function isSameDay(iso, ref){
+  // Same civil day (Gregorian local == same real day as Shamsi «امروز»)
+  const p = (typeof parseISODateParts === 'function') ? parseISODateParts(iso) : null;
+  if(p && ref && !isNaN(ref.getTime())){
+    return p.y === ref.getFullYear() && p.m === (ref.getMonth()+1) && p.d === ref.getDate();
+  }
   const d = new Date(iso);
   return d.toDateString() === ref.toDateString();
 }
