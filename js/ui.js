@@ -231,8 +231,9 @@ function isSameJalaliMonth(iso, ref){
 }
 
 /**
- * HTML for a Shamsi date field. Hidden input keeps Gregorian YYYY-MM-DD (same id as before)
- * so existing getElementById(...).value readers keep working.
+ * HTML for a Shamsi date field.
+ * Looks like a single native-style input; tap opens year/month/day panel.
+ * Hidden input keeps Gregorian YYYY-MM-DD (same id) for existing .value readers.
  */
 function shamsiDateInputHTML(id, valueISO){
   const iso = (valueISO && parseISODateParts(valueISO)) ? String(valueISO).slice(0,10) : todayISO();
@@ -240,6 +241,7 @@ function shamsiDateInputHTML(id, valueISO){
     new Date().getFullYear(), new Date().getMonth()+1, new Date().getDate()
   );
   const jy = j[0], jm = j[1], jd = j[2];
+  const label = enToFaDigits(jy + '/' + jm + '/' + jd);
   const y0 = jy - 15, y1 = jy + 5;
   let yOpts = '';
   for(let y = y1; y >= y0; y--){
@@ -256,21 +258,25 @@ function shamsiDateInputHTML(id, valueISO){
   }
   return `<div class="shamsi-date" data-shamsi-root="1">
     <input type="hidden" id="${esc(id)}" value="${esc(iso)}" data-shamsi-hidden="1">
-    <div class="shamsi-date-row">
-      <select class="shamsi-y" aria-label="سال شمسی" data-shamsi-part="y">${yOpts}</select>
-      <select class="shamsi-m" aria-label="ماه شمسی" data-shamsi-part="m">${mOpts}</select>
-      <select class="shamsi-d" aria-label="روز شمسی" data-shamsi-part="d">${dOpts}</select>
+    <button type="button" class="shamsi-date-trigger" data-shamsi-trigger="1" aria-label="انتخاب تاریخ شمسی">${label}</button>
+    <div class="shamsi-date-panel" data-shamsi-panel="1" hidden>
+      <div class="shamsi-date-row">
+        <select class="shamsi-y" aria-label="سال شمسی" data-shamsi-part="y">${yOpts}</select>
+        <select class="shamsi-m" aria-label="ماه شمسی" data-shamsi-part="m">${mOpts}</select>
+        <select class="shamsi-d" aria-label="روز شمسی" data-shamsi-part="d">${dOpts}</select>
+      </div>
     </div>
   </div>`;
 }
 
-/** Rebuild day options + sync hidden Gregorian value for one .shamsi-date root. */
+/** Rebuild day options + sync hidden Gregorian value + trigger label. */
 function syncShamsiDateRoot(root){
   if(!root) return;
   const hid = root.querySelector('[data-shamsi-hidden]');
   const yEl = root.querySelector('.shamsi-y');
   const mEl = root.querySelector('.shamsi-m');
   const dEl = root.querySelector('.shamsi-d');
+  const trigger = root.querySelector('[data-shamsi-trigger]');
   if(!hid || !yEl || !mEl || !dEl) return;
   let jy = parseInt(yEl.value, 10);
   let jm = parseInt(mEl.value, 10);
@@ -291,6 +297,9 @@ function syncShamsiDateRoot(root){
   const iso = jalaliToISO(jy, jm, jd);
   const prev = hid.value;
   hid.value = iso;
+  if(trigger){
+    trigger.textContent = enToFaDigits(jy + '/' + jm + '/' + jd);
+  }
   if(prev !== iso){
     try{
       hid.dispatchEvent(new Event('input', { bubbles: true }));
@@ -299,7 +308,7 @@ function syncShamsiDateRoot(root){
   }
 }
 
-/** One-time document delegation for Shamsi selects (safe across openSheet re-renders). */
+/** One-time document delegation for Shamsi selects + trigger toggle. */
 (function bindShamsiDateDelegation(){
   if(typeof document === 'undefined') return;
   function onChange(e){
@@ -308,12 +317,47 @@ function syncShamsiDateRoot(root){
     const root = t.closest('[data-shamsi-root]');
     if(root) syncShamsiDateRoot(root);
   }
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', function(){
-      document.addEventListener('change', onChange, true);
-    });
-  } else {
+  function onClick(e){
+    const t = e.target;
+    if(!t || !t.closest) return;
+    const trigger = t.closest('[data-shamsi-trigger]');
+    if(trigger){
+      e.preventDefault();
+      const root = trigger.closest('[data-shamsi-root]');
+      if(!root) return;
+      const panel = root.querySelector('[data-shamsi-panel]');
+      if(!panel) return;
+      const open = panel.hasAttribute('hidden');
+      // close other open shamsi panels
+      document.querySelectorAll('[data-shamsi-panel]').forEach(function(p){
+        if(p !== panel) p.setAttribute('hidden', '');
+      });
+      document.querySelectorAll('[data-shamsi-trigger]').forEach(function(b){
+        if(b !== trigger) b.classList.remove('open');
+      });
+      if(open){
+        panel.removeAttribute('hidden');
+        trigger.classList.add('open');
+      } else {
+        panel.setAttribute('hidden', '');
+        trigger.classList.remove('open');
+      }
+      return;
+    }
+    // click outside closes panels
+    if(!t.closest('[data-shamsi-root]')){
+      document.querySelectorAll('[data-shamsi-panel]').forEach(function(p){ p.setAttribute('hidden', ''); });
+      document.querySelectorAll('[data-shamsi-trigger].open').forEach(function(b){ b.classList.remove('open'); });
+    }
+  }
+  function bind(){
     document.addEventListener('change', onChange, true);
+    document.addEventListener('click', onClick, true);
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', bind);
+  } else {
+    bind();
   }
 })();
 
