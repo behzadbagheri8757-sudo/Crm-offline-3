@@ -163,8 +163,8 @@ function renderReportsBodyOnly(){
   const zero = products.filter(p => (p.stockQty||0) === 0);
   const negative = products.filter(p => (p.stockQty||0) < 0);
 
-  // ★★★ NEW: top products (8) ★★★
-  const topProductsList = topProducts(8);
+  // top-selling products (read-only, existing calc.js helper — no new sales math)
+  const topSellingProducts = topProducts(8);
 
   const periodLabel = {today:'امروز', week:'این هفته', month:'این ماه', all:'همه زمان‌ها'}[reportPeriod];
 
@@ -193,22 +193,6 @@ function renderReportsBodyOnly(){
         <div class="card"><div class="label">دریافت نقد/کارت/انتقال (کل)</div><div class="value">${toman(g.totalReceived)} ت</div></div>
         <div class="card"><div class="label">چک در جریان</div><div class="value accent-amber">${toman(g.outstandingChecks)} ت</div></div>
       </div>
-    </div>
-
-    <!-- ★★★ NEW SECTION: پرفروش‌ترین کالاها ★★★ -->
-    <div class="report-section">
-      <h3>پرفروش‌ترین کالاها</h3>
-      ${topProductsList.length === 0 ? `
-        <div class="empty" style="padding:8px 0;">هنوز فروشی ثبت نشده است.</div>
-      ` : `
-        ${topProductsList.map(p => `
-          <div class="ledger-row" style="cursor:default;">
-            <span class="name">${esc(p.name)}</span>
-            <span class="filler"></span>
-            <span class="amount">${p.qty} عدد — ${toman(p.revenue)} ت</span>
-          </div>
-        `).join('')}
-      `}
     </div>
 
     <div class="report-section">
@@ -284,6 +268,23 @@ function renderReportsBodyOnly(){
         <a class="btn small secondary" href="./inventory.html">رفتن به انبار</a>
         <a class="btn small secondary" href="./products.html">لیست کالاها</a>
       </div>
+    </div>
+
+    <div class="report-section report-top-products">
+      <h3>پرفروش‌ترین کالاها</h3>
+      ${topSellingProducts.length ? `
+        <div class="rtp-list">
+          ${topSellingProducts.map((p, idx)=>`
+            <div class="rtp-row">
+              <span class="rtp-rank">${idx+1}</span>
+              <span class="rtp-info">
+                <span class="rtp-name">${esc(p.name)}</span>
+                <span class="rtp-qty">تعداد فروش: ${p.qty}</span>
+              </span>
+              <span class="rtp-amount">${toman(p.revenue)} ت</span>
+            </div>`).join('')}
+        </div>
+      ` : '<div class="empty" style="padding:8px 0;">فروشی ثبت نشده</div>'}
     </div>
 
     <div class="report-section">
