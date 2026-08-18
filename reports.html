@@ -48,6 +48,37 @@
 
 let reportPeriod = 'all'; // today | week | month | all
 
+/* Accordion open/closed state for report sections below "پرفروش‌ترین کالاها".
+   Sections above (خلاصه فروش, سود, پرفروش‌ترین کالاها) are never collapsible. */
+let reportAccordionState = { customers:false, suppliers:false, inventory:false, invoices:false };
+
+function toggleReportAccordion(key){
+  if(!(key in reportAccordionState)) return;
+  reportAccordionState[key] = !reportAccordionState[key];
+  const header = document.querySelector(`.report-accordion-header[data-racc-toggle="${key}"]`);
+  const content = document.getElementById(`racc-${key}`);
+  if(header){
+    header.classList.toggle('is-open', reportAccordionState[key]);
+    header.setAttribute('aria-expanded', reportAccordionState[key] ? 'true' : 'false');
+  }
+  if(content){ content.hidden = !reportAccordionState[key]; }
+}
+
+/** Wrap section content in a collapsible accordion header/content pair (Reports-only presentation). */
+function reportAccordionSection(key, titleHtml, innerHtml){
+  const isOpen = !!reportAccordionState[key];
+  return `
+    <div class="report-section report-accordion">
+      <button type="button" class="report-accordion-header ${isOpen?'is-open':''}" data-racc-toggle="${key}" aria-expanded="${isOpen?'true':'false'}" aria-controls="racc-${key}">
+        <h3>${titleHtml}</h3>
+        <span class="report-accordion-chevron" aria-hidden="true"></span>
+      </button>
+      <div class="report-accordion-content" id="racc-${key}" ${isOpen ? '' : 'hidden'}>
+        ${innerHtml}
+      </div>
+    </div>`;
+}
+
 function startOfWeek(ref){
   const d = new Date(ref);
   const day = d.getDay(); // 0=Sun
@@ -110,6 +141,13 @@ function drawReportsPage(){
         });
         renderReportsBodyOnly();
       });
+    });
+    // Delegated listener on the persistent #reports-body container: survives
+    // the innerHTML re-renders triggered by period-chip clicks / toggles.
+    document.getElementById('reports-body').addEventListener('click', function(e){
+      const btn = e.target.closest('[data-racc-toggle]');
+      if(!btn) return;
+      toggleReportAccordion(btn.getAttribute('data-racc-toggle'));
     });
   }
   renderReportsBodyOnly();
@@ -195,8 +233,24 @@ function renderReportsBodyOnly(){
       </div>
     </div>
 
-    <div class="report-section">
-      <h3>مشتریان</h3>
+    <div class="report-section report-top-products">
+      <h3>پرفروش‌ترین کالاها</h3>
+      ${topSellingProducts.length ? `
+        <div class="rtp-list">
+          ${topSellingProducts.map((p, idx)=>`
+            <div class="rtp-row">
+              <span class="rtp-rank">${idx+1}</span>
+              <span class="rtp-info">
+                <span class="rtp-name">${esc(p.name)}</span>
+                <span class="rtp-qty">تعداد فروش: ${p.qty}</span>
+              </span>
+              <span class="rtp-amount">${toman(p.revenue)} ت</span>
+            </div>`).join('')}
+        </div>
+      ` : '<div class="empty" style="padding:8px 0;">فروشی ثبت نشده</div>'}
+    </div>
+
+    ${reportAccordionSection('customers', 'مشتریان', `
       <div class="cards">
         <div class="card"><div class="label">تعداد کل</div><div class="value">${customers.length}</div></div>
         <div class="card"><div class="label">بدهکار</div><div class="value accent-rust">${debtors}</div></div>
@@ -216,10 +270,9 @@ function renderReportsBodyOnly(){
             <span class="amount accent-rust">${toman(t.balance)} ت</span>
           </a>`).join('')}
       ` : '<div class="empty" style="padding:8px 0;">بدهکاری ثبت نشده</div>'}
-    </div>
+    `)}
 
-    <div class="report-section">
-      <h3>تأمین‌کنندگان</h3>
+    ${reportAccordionSection('suppliers', 'تأمین‌کنندگان', `
       <div class="cards">
         <div class="card"><div class="label">تعداد</div><div class="value">${suppliers.length}</div></div>
         <div class="card"><div class="label">دارای بدهی</div><div class="value">${supWithDebt}</div></div>
@@ -232,10 +285,9 @@ function renderReportsBodyOnly(){
           <span class="filler"></span>
           <span class="amount accent-rust">${toman(t.balance)} ت</span>
         </a>`).join('') : '<div class="empty" style="padding:8px 0;">بدهی تأمین‌کننده نیست</div>'}
-    </div>
+    `)}
 
-    <div class="report-section">
-      <h3>انبار</h3>
+    ${reportAccordionSection('inventory', 'انبار', `
       <div class="cards">
         <div class="card"><div class="label">تعداد کالا</div><div class="value">${products.length}</div></div>
         <div class="card wide"><div class="label">ارزش موجودی (qty × buy)</div>
@@ -268,27 +320,9 @@ function renderReportsBodyOnly(){
         <a class="btn small secondary" href="./inventory.html">رفتن به انبار</a>
         <a class="btn small secondary" href="./products.html">لیست کالاها</a>
       </div>
-    </div>
+    `)}
 
-    <div class="report-section report-top-products">
-      <h3>پرفروش‌ترین کالاها</h3>
-      ${topSellingProducts.length ? `
-        <div class="rtp-list">
-          ${topSellingProducts.map((p, idx)=>`
-            <div class="rtp-row">
-              <span class="rtp-rank">${idx+1}</span>
-              <span class="rtp-info">
-                <span class="rtp-name">${esc(p.name)}</span>
-                <span class="rtp-qty">تعداد فروش: ${p.qty}</span>
-              </span>
-              <span class="rtp-amount">${toman(p.revenue)} ت</span>
-            </div>`).join('')}
-        </div>
-      ` : '<div class="empty" style="padding:8px 0;">فروشی ثبت نشده</div>'}
-    </div>
-
-    <div class="report-section">
-      <h3>فاکتورها — ${esc(periodLabel)}</h3>
+    ${reportAccordionSection('invoices', `فاکتورها — ${esc(periodLabel)}`, `
       <div class="cards">
         <div class="card"><div class="label">تعداد در دوره</div><div class="value">${periodCount}</div></div>
         <div class="card"><div class="label">پرداخت‌شده / بدون مانده</div><div class="value accent-olive">${paidCount}</div></div>
@@ -299,7 +333,7 @@ function renderReportsBodyOnly(){
       <div class="btn-row" style="margin-top:10px;">
         <a class="btn small secondary" href="./invoices.html">همه فاکتورها</a>
       </div>
-    </div>
+    `)}
   `;
 }
 
