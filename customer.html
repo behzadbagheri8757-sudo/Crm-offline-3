@@ -117,16 +117,84 @@ function drawCustomerPage(){
   const visitRows = visits.length ? visits.slice(0, 30).map(v => {
     const ordered = v.ordered || v.result === (typeof VISIT_RESULTS!=='undefined' && VISIT_RESULTS[0]);
     const scoreBit = (typeof v.score === 'number') ? (' — امتیاز: ' + v.score + ' از ۱۰۰') : '';
-    const noteBit = v.note ? `<span class="sub">${esc(v.note)}</span>` : '';
+    const extraBits = [];
+    if(v.reason) extraBits.push('دلیل: ' + v.reason);
+    if(v.opportunity) extraBits.push('فرصت (مشاهده): ' + v.opportunity);
+    if(v.threat) extraBits.push('تهدید (مشاهده): ' + v.threat);
+    if(v.nextAction) extraBits.push('اقدام بعدی: ' + v.nextAction);
+    if(Array.isArray(v.tags) && v.tags.length) extraBits.push('برچسب: ' + v.tags.join('، '));
+    if(v.note) extraBits.push(v.note);
+    const extraHtml = extraBits.map(x => `<span class="sub">${esc(x)}</span>`).join('');
     return `<div class="ledger-row" style="cursor:default;">
       <span class="name">${esc(v.result||'ویزیت')}
         <span class="sub">${faDate(v.date)}${v.time?' — '+esc(v.time):''}${scoreBit}</span>
-        ${noteBit}
+        ${extraHtml}
       </span>
       <span class="filler"></span>
       <span class="amount ${ordered?'accent-olive':''}">${ordered?'سفارش':'ویزیت'}</span>
     </div>`;
   }).join('') : '<div class="empty" style="padding:12px 0;">ویزیتی ثبت نشده</div>';
+
+  let behaviorHtml = '';
+  if(typeof customerBehavior === 'function'){
+    const b = customerBehavior(c.id);
+    const trendLabel = b.amountTrend === 'up' ? 'سیگنال افزایش' : (b.amountTrend === 'down' ? 'سیگنال کاهش' : (b.amountTrend === 'flat' ? 'تقریباً ثابت' : null));
+    const trendCls = b.amountTrend === 'up' ? 'accent-olive' : (b.amountTrend === 'down' ? 'accent-rust' : '');
+    const intervalText = b.avgIntervalDays != null
+      ? (Math.round(b.avgIntervalDays * 10) / 10) + ' روز'
+      : 'اطلاعات کافی نیست';
+    const gapText = b.daysSinceLast != null ? (Math.round(b.daysSinceLast) + ' روز') : '—';
+    const behindHtml = b.behindPattern === true
+      ? `<div class="card wide"><div class="label">نشانه</div><div class="value accent-amber" style="font-size:.95rem;">از الگوی معمول خرید عقب افتاده</div></div>`
+      : (b.behindPattern === false
+        ? `<div class="card wide"><div class="label">وضعیت فاصله</div><div class="value accent-olive" style="font-size:.95rem;">در محدوده الگوی معمول</div></div>`
+        : '');
+    const topProdHtml = b.topProducts && b.topProducts.length
+      ? b.topProducts.map(p => `<div class="ledger-row" style="cursor:default;"><span class="name">${esc(p.name)}<span class="sub">تعداد: ${p.qty}</span></span><span class="filler"></span><span class="amount">${toman(p.revenue)} ت</span></div>`).join('')
+      : '<div class="empty" style="padding:8px 0;">اطلاعات کافی نیست</div>';
+    const decliningHtml = b.decliningProducts && b.decliningProducts.length
+      ? b.decliningProducts.map(p => `<div class="ledger-row" style="cursor:default;"><span class="name">${esc(p.name)}<span class="sub">قبلاً ${p.earlyQty} ← اخیراً ${p.lateQty}</span></span></div>`).join('')
+      : '';
+    const lv = b.lastVisit;
+    const lastVisitBits = [];
+    if(lv){
+      lastVisitBits.push(esc(lv.result || 'ویزیت'));
+      if(lv.reason) lastVisitBits.push('دلیل: ' + esc(lv.reason));
+      if(lv.nextAction) lastVisitBits.push('اقدام بعدی: ' + esc(lv.nextAction));
+      if(lv.opportunity) lastVisitBits.push('فرصت (مشاهده): ' + esc(lv.opportunity));
+      if(lv.threat) lastVisitBits.push('تهدید (مشاهده): ' + esc(lv.threat));
+      if(Array.isArray(lv.tags) && lv.tags.length) lastVisitBits.push('برچسب: ' + esc(lv.tags.join('، ')));
+    }
+    const convText = b.conversionRate != null
+      ? (Math.round(b.conversionRate * 100) + '٪ (' + b.orderedCount + ' از ' + b.visitCount + ')')
+      : (b.visitCount ? '—' : 'ویزیتی ثبت نشده');
+
+    behaviorHtml = `
+      <h3 class="sub-title">رفتار خرید مشتری</h3>
+      <div class="cards" style="margin-bottom:10px;">
+        <div class="card"><div class="label">اولین خرید</div><div class="value" style="font-size:.95rem;">${b.firstInvoiceDate ? faDate(b.firstInvoiceDate) : '—'}</div></div>
+        <div class="card"><div class="label">آخرین خرید</div><div class="value" style="font-size:.95rem;">${b.lastInvoiceDate ? faDate(b.lastInvoiceDate) : '—'}</div></div>
+        <div class="card"><div class="label">تعداد فاکتور</div><div class="value">${b.invoiceCount}</div></div>
+        <div class="card"><div class="label">میانگین مبلغ فاکتور</div><div class="value" style="font-size:.95rem;">${b.avgInvoice != null ? toman(b.avgInvoice) + ' ت' : '—'}</div></div>
+        <div class="card"><div class="label">الگوی معمول خرید</div><div class="value" style="font-size:.9rem;">${esc(String(intervalText))}</div></div>
+        <div class="card"><div class="label">فاصله از آخرین خرید</div><div class="value" style="font-size:.95rem;">${esc(String(gapText))}</div></div>
+        <div class="card"><div class="label">خرید خالص ۳۰ روز</div><div class="value" style="font-size:.95rem;">${toman(b.sales30 || 0)} ت</div></div>
+        <div class="card"><div class="label">خرید خالص ۹۰ روز</div><div class="value" style="font-size:.95rem;">${toman(b.sales90 || 0)} ت</div></div>
+        ${(b.returnTotal > 0) ? `<div class="card wide"><div class="label">جمع برگشت از فروش (کل سابقه)</div><div class="value" style="font-size:.95rem;">${toman(b.returnTotal)} ت</div></div>` : ''}
+        ${trendLabel ? `<div class="card wide"><div class="label">روند مبلغ (۳۰ روز اخیر نسبت به ۳۰ روز قبل)</div><div class="value ${trendCls}" style="font-size:1rem;">${trendLabel}</div></div>` : `<div class="card wide"><div class="label">روند مبلغ</div><div class="value" style="font-size:.9rem;">اطلاعات کافی نیست</div></div>`}
+        ${behindHtml}
+        <div class="card"><div class="label">تعداد ویزیت</div><div class="value">${b.visitCount}</div></div>
+        <div class="card"><div class="label">نرخ تبدیل ویزیت به سفارش</div><div class="value" style="font-size:.85rem;">${esc(String(convText))}</div></div>
+      </div>
+      <div class="sub-title" style="margin-top:4px;">کالاهای اصلی مشتری</div>
+      ${topProdHtml}
+      ${decliningHtml ? `<div class="sub-title" style="margin-top:10px;">کالاهای با کاهش خرید (نسبت به نیمه اول سابقه)</div>${decliningHtml}` : ''}
+      ${lv ? `<div class="card" style="margin-top:10px;margin-bottom:12px;">
+        <div class="label">آخرین ویزیت — ${faDate(lv.date)}${lv.time ? ' ' + esc(lv.time) : ''}</div>
+        <div style="font-size:.88rem;line-height:1.7;margin-top:6px;">${lastVisitBits.join('<br>')}</div>
+      </div>` : '<div class="empty" style="padding:8px 0 12px;">ویزیتی ثبت نشده</div>'}
+    `;
+  }
 
   main.innerHTML = `
     <div class="btn-row" style="margin-bottom:10px;">
@@ -157,6 +225,8 @@ function drawCustomerPage(){
       <div class="card"><div class="label">تعداد فاکتور</div><div class="value">${invs.length}</div></div>
       <div class="card"><div class="label">سود مشتری</div><div class="value accent-amber">${toman(profit)} ت</div></div>
     </div>
+
+    ${behaviorHtml}
 
     <h3 class="sub-title">عملیات سریع</h3>
     <div class="btn-row" style="margin-bottom:16px;">

@@ -186,13 +186,20 @@ function renderVisitListOnly(){
     const scoreBit = (typeof v.score === 'number')
       ? `<span class="sub">امتیاز ارزیابی: ${v.score} از ۱۰۰</span>`
       : '';
-    const noteBit = v.note ? `<span class="sub">${esc(v.note)}</span>` : '';
+    const extraBits = [];
+    if(v.reason) extraBits.push('دلیل: ' + v.reason);
+    if(v.nextAction) extraBits.push('اقدام: ' + v.nextAction);
+    if(v.opportunity) extraBits.push('فرصت (مشاهده): ' + v.opportunity);
+    if(v.threat) extraBits.push('تهدید (مشاهده): ' + v.threat);
+    if(Array.isArray(v.tags) && v.tags.length) extraBits.push('برچسب: ' + v.tags.join('، '));
+    if(v.note) extraBits.push(v.note);
+    const extraHtml = extraBits.map(x => `<span class="sub">${esc(x)}</span>`).join('');
     return `<a class="ledger-row" href="./customer.html?id=${encodeURIComponent(r.customerId)}" style="text-decoration:none;color:inherit;">
       <span class="name">${esc(r.customerName)}
         <span class="sub">${faDate(v.date)}${v.time?' — '+esc(v.time):''}${r.region?' — '+esc(r.region):''}</span>
         <span class="sub ${cls}">${esc(v.result||'ویزیت')}</span>
         ${scoreBit}
-        ${noteBit}
+        ${extraHtml}
       </span>
       <span class="filler"></span>
       <span class="amount ${cls}" style="font-size:.8rem;">${v.ordered || v.result===VISIT_RESULTS[0] ? 'سفارش' : 'ویزیت'}</span>
