@@ -299,3 +299,222 @@ function inactiveCustomers(){
   }).map(c=>({c, st:customerStats(c.id)})).sort((a,b)=>b.st.daysSinceLast-a.st.daysSinceLast);
 }
 
+/* ============================================================
+   Customer Behavior — pure derived metrics (READ-ONLY)
+   Purchase truth = invoices (all-time baseline). Visits = observation only.
+   No metrics stored in DB. No financial side effects.
+   ============================================================ */
+
+function _behaviorSalesInRange(invs, startISO, endISO){
+  return invs.reduce((s, inv)=>{
+    const d = inv.date || '';
+    if(startISO && d < startISO) return s;
+    if(endISO && d > endISO) return s;
+    return s + (inv.total || 0);
+  }, 0);
+}
+
+/** Sales-return payments only (method==='return'). READ-ONLY. Does not touch stock/FIFO. */
+function _behaviorReturnPayments(cid){
+  return (typeof customerPayments === 'function' ? customerPayments(cid) : [])
+    .filter(p => p && p.method === 'return');
+}
+
+function _behaviorReturnsInRange(returns, startISO, endISO){
+  return returns.reduce((s, p)=>{
+    const d = p.date || '';
+    if(startISO && d < startISO) return s;
+    if(endISO && d > endISO) return s;
+    return s + (p.amount || 0);
+  }, 0);
+}
+
+function _behaviorISODaysAgo(n){
+  const ref = new Date();
+  const d = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() - n);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+
+/**
+ * Runtime derived behavior profile for sales decisions.
+ * Purchase truth = invoices minus sales-returns (payments method==='return').
+ * Visits = observation only. Returns null when data is insufficient. Never mutates data.
+ */
+function customerBehavior(cid){
+  const invs = customerInvoices(cid).slice().sort((a,b)=>
+    (a.date||'').localeCompare(b.date||'') || String(a.number||'').localeCompare(String(b.number||'')));
+  const returns = _behaviorReturnPayments(cid);
+  const cust = (data.customers || []).find(c => c.id === cid);
+  const visits = ((cust && cust.visits) || []).slice().sort((a,b)=>
+    (b.date||'').localeCompare(a.date||'') || (b.time||'').localeCompare(a.time||''));
+
+  const count = invs.length;
+  const firstInvoiceDate = count ? invs[0].date : null;
+  const lastInvoiceDate = count ? invs[count - 1].date : null;
+  const invTotalGross = invs.reduce((s,i)=> s + (i.total||0), 0);
+  const returnTotal = returns.reduce((s,p)=> s + (p.amount||0), 0);
+  const invTotal = invTotalGross - returnTotal;
+  const avgInvoice = count ? invTotal / count : null;
+
+  let avgIntervalDays = null;
+  if(count >= 2){
+    const intervals = [];
+    for(let i = 1; i < count; i++){
+      const p0 = (typeof parseISODateParts === 'function') ? parseISODateParts(invs[i-1].date) : null;
+      const p1 = (typeof parseISODateParts === 'function') ? parseISODateParts(invs[i].date) : null;
+      if(p0 && p1){
+        const t0 = new Date(p0.y, p0.m - 1, p0.d).getTime();
+        const t1 = new Date(p1.y, p1.m - 1, p1.d).getTime();
+        if(!isNaN(t0) && !isNaN(t1)) intervals.push(Math.round((t1 - t0) / 86400000));
+      } else {
+        const t0 = new Date(invs[i-1].date).getTime();
+        const t1 = new Date(invs[i].date).getTime();
+        if(!isNaN(t0) && !isNaN(t1)) intervals.push(Math.round((t1 - t0) / 86400000));
+      }
+    }
+    if(intervals.length){
+      avgIntervalDays = intervals.reduce((a,b)=>a+b, 0) / intervals.length;
+    }
+  }
+
+  const daysSinceLastRaw = lastInvoiceDate ? daysAgo(lastInvoiceDate) : null;
+  const daysSinceLast = (daysSinceLastRaw != null && isFinite(daysSinceLastRaw)) ? daysSinceLastRaw : null;
+  const behindPattern = (avgIntervalDays != null && daysSinceLast != null)
+    ? (daysSinceLast > avgIntervalDays + 0.5)
+    : null;
+
+  const today = (typeof todayISO === 'function') ? todayISO() : new Date().toISOString().slice(0,10);
+  const d30 = _behaviorISODaysAgo(30);
+  const d60 = _behaviorISODaysAgo(60);
+  const d90 = _behaviorISODaysAgo(90);
+  const d31 = _behaviorISODaysAgo(31);
+  const sales30 = _behaviorSalesInRange(invs, d30, today) - _behaviorReturnsInRange(returns, d30, today);
+  const sales90 = _behaviorSalesInRange(invs, d90, today) - _behaviorReturnsInRange(returns, d90, today);
+  const salesPrev30 = _behaviorSalesInRange(invs, d60, d31) - _behaviorReturnsInRange(returns, d60, d31);
+
+  let amountTrend = null;
+  if(count >= 2){
+    const a = sales30, b = salesPrev30;
+    if(b === 0 && a === 0) amountTrend = 'flat';
+    else if(b === 0 && a > 0) amountTrend = 'up';
+    else if(a === 0 && b > 0) amountTrend = 'down';
+    else if(b > 0){
+      const ratio = a / b;
+      if(ratio >= 1.15) amountTrend = 'up';
+      else if(ratio <= 0.85) amountTrend = 'down';
+      else amountTrend = 'flat';
+    }
+  }
+
+  /* Net product qty/revenue: sold from invoices minus returnItems on return payments */
+  const prodMap = {};
+  invs.forEach(inv => {
+    (inv.items || []).forEach(it => {
+      if(!it.productId && !it.name) return;
+      const key = it.productId || ('n:' + (it.name || ''));
+      if(!prodMap[key]) prodMap[key] = { productId: it.productId || null, name: it.name || '—', qty: 0, revenue: 0 };
+      prodMap[key].qty += (it.qty || 0);
+      prodMap[key].revenue += (it.qty || 0) * (it.price || 0) - (it.discount || 0);
+    });
+  });
+  returns.forEach(p => {
+    (p.returnItems || []).forEach(ri => {
+      if(!ri.productId && !ri.name) return;
+      const key = ri.productId || ('n:' + (ri.name || ''));
+      if(!prodMap[key]) prodMap[key] = { productId: ri.productId || null, name: ri.name || '—', qty: 0, revenue: 0 };
+      prodMap[key].qty -= (ri.qty || 0);
+      prodMap[key].revenue -= (ri.qty || 0) * (ri.price || 0);
+    });
+  });
+  const topProductsList = Object.values(prodMap)
+    .filter(p => p.qty > 0.0001)
+    .sort((a,b)=> b.qty - a.qty)
+    .slice(0, 5);
+
+  let decliningProducts = [];
+  if(count >= 4){
+    const mid = Math.floor(count / 2);
+    const early = invs.slice(0, mid);
+    const late = invs.slice(mid);
+    const earlyMap = {}, lateMap = {};
+    function accSold(list, map){
+      list.forEach(inv => (inv.items||[]).forEach(it=>{
+        const key = it.productId || ('n:' + (it.name||''));
+        if(!map[key]) map[key] = { productId: it.productId||null, name: it.name||'—', qty: 0 };
+        map[key].qty += (it.qty||0);
+      }));
+    }
+    accSold(early, earlyMap);
+    accSold(late, lateMap);
+    /* Approximate return allocation by return payment date vs mid invoice date */
+    const midDate = invs[mid] && invs[mid].date ? invs[mid].date : null;
+    if(midDate){
+      returns.forEach(p => {
+        const target = (p.date || '') < midDate ? earlyMap : lateMap;
+        (p.returnItems || []).forEach(ri => {
+          const key = ri.productId || ('n:' + (ri.name||''));
+          if(!target[key]) target[key] = { productId: ri.productId||null, name: ri.name||'—', qty: 0 };
+          target[key].qty -= (ri.qty||0);
+        });
+      });
+    }
+    Object.keys(earlyMap).forEach(key => {
+      const e = earlyMap[key].qty;
+      const l = (lateMap[key] && lateMap[key].qty) || 0;
+      if(e >= 2 && l < e * 0.6){
+        decliningProducts.push({
+          name: earlyMap[key].name,
+          productId: earlyMap[key].productId,
+          earlyQty: Math.max(0, Math.round(e * 100) / 100),
+          lateQty: Math.max(0, Math.round(l * 100) / 100)
+        });
+      }
+    });
+    decliningProducts.sort((a,b)=> (b.earlyQty - b.lateQty) - (a.earlyQty - a.lateQty));
+    decliningProducts = decliningProducts.slice(0, 5);
+  }
+
+  const visitCount = visits.length;
+  let orderedCount = 0;
+  visits.forEach(v=>{
+    if(v.ordered === true || (typeof VISIT_RESULTS !== 'undefined' && v.result === VISIT_RESULTS[0])) orderedCount++;
+  });
+  const conversionRate = visitCount ? (orderedCount / visitCount) : null;
+  const lastVisit = visitCount ? visits[0] : null;
+  const lastNextAction = (lastVisit && lastVisit.nextAction) ? lastVisit.nextAction : null;
+  let consecutiveNoOrder = 0;
+  for(const v of visits){
+    const ordered = v.ordered === true || (typeof VISIT_RESULTS !== 'undefined' && v.result === VISIT_RESULTS[0]);
+    if(ordered) break;
+    consecutiveNoOrder++;
+  }
+
+  return {
+    invoiceCount: count,
+    firstInvoiceDate,
+    lastInvoiceDate,
+    invTotalGross,
+    returnTotal,
+    invTotal,
+    avgInvoice,
+    avgIntervalDays,
+    daysSinceLast,
+    behindPattern,
+    sales30,
+    sales90,
+    salesPrev30,
+    amountTrend,
+    topProducts: topProductsList,
+    decliningProducts,
+    visitCount,
+    orderedCount,
+    conversionRate,
+    consecutiveNoOrder,
+    lastVisit,
+    lastNextAction,
+  };
+}
+

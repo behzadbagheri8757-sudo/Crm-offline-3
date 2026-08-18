@@ -1143,25 +1143,93 @@ function openAddCheck(cid){
 }
 
 function openAddVisit(cid){
+  const reasonOpts = (typeof VISIT_REASONS !== 'undefined' ? VISIT_REASONS : []).map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join('');
+  const oppOpts = (typeof VISIT_OPPORTUNITIES !== 'undefined' ? VISIT_OPPORTUNITIES : []).map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join('');
+  const threatOpts = (typeof VISIT_THREATS !== 'undefined' ? VISIT_THREATS : []).map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join('');
+  const nextOpts = (typeof VISIT_NEXT_ACTIONS !== 'undefined' ? VISIT_NEXT_ACTIONS : []).map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join('');
   openSheet(`
     <h3>ثبت ویزیت مشتری</h3>
     <div class="field"><label>تاریخ</label>${shamsiDateInputHTML('f-date', todayISO())}</div>
     <div class="field"><label>ساعت</label><input id="f-time" type="time" value="${nowHHMM()}"></div>
     <div class="field">
       <label>نتیجه ویزیت</label>
-      <select id="f-result">${VISIT_RESULTS.map(r=>`<option value="${r}">${r}</option>`).join('')}</select>
+      <select id="f-result">${VISIT_RESULTS.map(r=>`<option value="${esc(r)}">${esc(r)}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>یادداشت کوتاه (اختیاری)</label><input id="f-visit-note" placeholder="اختیاری" autocomplete="off"></div>
+    <div class="btn-row" style="margin-bottom:8px;">
+      <button type="button" class="btn small secondary" id="toggle-visit-detail">جزئیات بیشتر</button>
+    </div>
+    <div id="visit-detail-block" style="display:none;">
+      <div class="field"><label>دلیل (مشاهده)</label>
+        <select id="f-visit-reason"><option value="">—</option>${reasonOpts}</select>
+      </div>
+      <div class="field"><label>فرصت (مشاهده)</label>
+        <select id="f-visit-opportunity"><option value="">—</option>${oppOpts}</select>
+      </div>
+      <div class="field"><label>تهدید (مشاهده)</label>
+        <select id="f-visit-threat"><option value="">—</option>${threatOpts}</select>
+      </div>
+      <div class="field"><label>اقدام بعدی</label>
+        <select id="f-visit-next"><option value="">—</option>${nextOpts}</select>
+      </div>
+      <div class="field"><label>برچسب‌ها (اختیاری، با ویرگول جدا کنید)</label>
+        <input id="f-visit-tags" placeholder="مثال: قیمت‌حساس، رقیب‌فعال" autocomplete="off">
+      </div>
     </div>
     <div class="btn-row"><button class="btn" id="save-visit">ثبت ویزیت</button></div>
   `);
+  const detailBtn = document.getElementById('toggle-visit-detail');
+  if(detailBtn){
+    detailBtn.addEventListener('click', ()=>{
+      const block = document.getElementById('visit-detail-block');
+      if(!block) return;
+      const open = block.style.display === 'none';
+      block.style.display = open ? 'block' : 'none';
+      detailBtn.textContent = open ? 'بستن جزئیات' : 'جزئیات بیشتر';
+    });
+  }
   document.getElementById('save-visit').addEventListener('click', async (e)=>{
     await withSubmitGuard(e.currentTarget, async ()=>{
       const c = data.customers.find(x=>x.id===cid);
+      if(!c){ showToast('مشتری پیدا نشد'); return; }
       const date = document.getElementById('f-date').value || todayISO();
       const time = document.getElementById('f-time').value || nowHHMM();
       const result = document.getElementById('f-result').value;
-      c.visits = c.visits||[];
-      c.visits.push({id:uid(), date, time, result, ordered: result===VISIT_RESULTS[0]});
-      await saveData(); openCustomerDetail(cid); render(); showToast('ویزیت ثبت شد');
+      const noteEl = document.getElementById('f-visit-note');
+      const note = noteEl ? (noteEl.value || '').trim() : '';
+      const reasonEl = document.getElementById('f-visit-reason');
+      const oppEl = document.getElementById('f-visit-opportunity');
+      const threatEl = document.getElementById('f-visit-threat');
+      const nextEl = document.getElementById('f-visit-next');
+      const tagsEl = document.getElementById('f-visit-tags');
+      const reason = reasonEl ? (reasonEl.value || '').trim() : '';
+      const opportunity = oppEl ? (oppEl.value || '').trim() : '';
+      const threat = threatEl ? (threatEl.value || '').trim() : '';
+      const nextAction = nextEl ? (nextEl.value || '').trim() : '';
+      let tags = [];
+      if(tagsEl && tagsEl.value){
+        tags = String(tagsEl.value).split(/[,،]/).map(t=>t.trim()).filter(Boolean);
+      }
+      const visit = {
+        id: uid(),
+        date,
+        time,
+        result,
+        ordered: result === VISIT_RESULTS[0],
+      };
+      if(note) visit.note = note;
+      if(reason) visit.reason = reason;
+      if(opportunity) visit.opportunity = opportunity;
+      if(threat) visit.threat = threat;
+      if(nextAction) visit.nextAction = nextAction;
+      if(tags.length) visit.tags = tags;
+      c.visits = c.visits || [];
+      c.visits.push(visit);
+      await saveData();
+      closeModal();
+      if(typeof openCustomerDetail === 'function') openCustomerDetail(cid);
+      if(typeof render === 'function') render();
+      showToast('ویزیت ثبت شد');
     });
   });
 }

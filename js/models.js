@@ -36,6 +36,20 @@ const REGION_SUGGESTIONS = ['رویان','نوشهر','چالوس','سیسنگا
 const CATEGORY_SUGGESTIONS = ['حبوبات','خشکبار','آجیل','برنج','ادویه','سایر'];
 const VISIT_RESULTS = ['سفارش گرفته شد','سفارش گرفته نشد','فروشگاه بسته بود','فقط بازدید/سرکشی'];
 
+/* Optional visit observation fields (Customer Behavior) — all optional, no migration */
+const VISIT_REASONS = [
+  'قیمت','موجودی','کیفیت','رقیب','عدم نیاز','مشکل نقدینگی','زمان نامناسب','سایر'
+];
+const VISIT_OPPORTUNITIES = [
+  'افزایش حجم','کالای جدید','کالای مکمل','معرفی محصول','فروش بیشتر','سایر'
+];
+const VISIT_THREATS = [
+  'رقیب جدید','کاهش تقاضا','قیمت رقیب','نارضایتی','کاهش خرید','تغییر تأمین‌کننده','سایر'
+];
+const VISIT_NEXT_ACTIONS = [
+  'پیگیری قیمت','ارائه نمونه','تماس','پیشنهاد محصول','مراجعه مجدد','پیگیری بدهی','سایر'
+];
+
 let data = emptyData();
 let activeTab = 'dashboard';
 let dbInstance = null;
