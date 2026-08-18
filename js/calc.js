@@ -271,11 +271,56 @@ function checksDueSoon(){
   }).sort((a,b)=> new Date(a.dueDate)-new Date(b.dueDate));
 }
 
+/* ============================================================
+   کشمش پلویی — سازگاری گزارش با دو قرارداد قدیمی/جدید ثبت qty (READ-ONLY)
+   قدیمی: qty همان وزن به کیلوگرم است (مثلاً 8.5 / 17 / 25.5).
+   جدید: qty تعداد بسته/کارتن است (1 / 2 / 3 ...) و فیلد weight همان ردیف
+   (که در زمان ثبت فاکتور برابر packageWeight × qty محاسبه و ذخیره شده)
+   وزن واقعی به کیلوگرم است.
+   تشخیص: هر ردیفی که weight>0 دارد فقط با روش جدید (qty=تعداد بسته) ساخته
+   شده، چون این فیلد فقط توسط کدی محاسبه می‌شود که qty را «تعداد بسته»
+   می‌داند؛ نبودن/صفر بودن weight یعنی ردیف قدیمی است و qty خودش کیلوگرم
+   است. این هیچ داده‌ای را تغییر نمی‌دهد؛ فقط در محاسبه‌ی گزارش استفاده
+   می‌شود. تطبیق کالا با productId انجام می‌شود؛ نام فقط fallback است
+   (برای رکوردهای یتیم بدون productId).
+   ============================================================ */
+const RAISIN_PILAF_NAME = 'کشمش پلویی';
+
+function _raisinPilafProductIds(){
+  const ids = new Set();
+  (data.products||[]).forEach(p=>{ if((p.name||'').trim() === RAISIN_PILAF_NAME) ids.add(p.id); });
+  return ids;
+}
+function _isRaisinPilafItem(it, raisinIds){
+  if(!it) return false;
+  if(it.productId) return raisinIds.has(it.productId);
+  return (it.name||'').trim() === RAISIN_PILAF_NAME;
+}
+/** وزن واقعی به کیلوگرم برای یک ردیف فروش این کالا (برای گزارش «پرفروش‌ترین کالاها»). */
+function _raisinPilafKg(it){
+  if(it.weight && it.weight > 0) return it.weight;
+  return it.qty || 0;
+}
+/** تعداد بسته/کارتن برای یک ردیف فروش این کالا (برای تاریخچه خرید مشتری). */
+function _raisinPilafPackages(it){
+  if(it.weight && it.weight > 0) return it.qty || 0;
+  const prod = (data.products||[]).find(p=>p.id===it.productId);
+  const pw = prod && prod.packageWeight;
+  if(!pw) return it.qty || 0;
+  return Math.round(((it.qty||0) / pw) * 100) / 100;
+}
+
 function topProducts(limit){
   const map = {};
+  const raisinIds = _raisinPilafProductIds();
   data.invoices.forEach(inv=>inv.items.forEach(it=>{
-    if(!map[it.productId]) map[it.productId] = {name:it.name, qty:0, revenue:0};
-    map[it.productId].qty += it.qty;
+    if(!map[it.productId]) map[it.productId] = {productId: it.productId, name:it.name, qty:0, revenue:0, qtyUnit:'count'};
+    if(_isRaisinPilafItem(it, raisinIds)){
+      map[it.productId].qty += _raisinPilafKg(it);
+      map[it.productId].qtyUnit = 'kg';
+    } else {
+      map[it.productId].qty += it.qty;
+    }
     map[it.productId].revenue += it.qty*it.price - (it.discount||0);
   }));
   return Object.values(map).sort((a,b)=>b.qty-a.qty).slice(0, limit||5);
@@ -409,14 +454,17 @@ function customerBehavior(cid){
     }
   }
 
-  /* Net product qty/revenue: sold from invoices minus returnItems on return payments */
+  /* Net product qty/revenue: sold from invoices minus returnItems on return payments.
+     کشمش پلویی: در این لیست («کالاهای اصلی مشتری» / تاریخچه خرید) qty باید تعداد
+     بسته/کارتن باشد، نه کیلوگرم — رجوع کن به توضیح _raisinPilafPackages در بالای فایل. */
   const prodMap = {};
+  const _raisinIdsForBehavior = _raisinPilafProductIds();
   invs.forEach(inv => {
     (inv.items || []).forEach(it => {
       if(!it.productId && !it.name) return;
       const key = it.productId || ('n:' + (it.name || ''));
       if(!prodMap[key]) prodMap[key] = { productId: it.productId || null, name: it.name || '—', qty: 0, revenue: 0 };
-      prodMap[key].qty += (it.qty || 0);
+      prodMap[key].qty += _isRaisinPilafItem(it, _raisinIdsForBehavior) ? _raisinPilafPackages(it) : (it.qty || 0);
       prodMap[key].revenue += (it.qty || 0) * (it.price || 0) - (it.discount || 0);
     });
   });
