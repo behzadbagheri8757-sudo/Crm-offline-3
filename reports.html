@@ -203,6 +203,8 @@ function renderReportsBodyOnly(){
 
   // top-selling products (read-only, existing calc.js helper — no new sales math)
   const topSellingProducts = topProducts(8);
+  // Same helper, just re-sorted by revenue instead of qty — no new pricing/amount logic.
+  const topByValue = topProducts(9999).slice().sort((a,b)=>b.revenue-a.revenue).slice(0, 5);
 
   const periodLabel = {today:'امروز', week:'این هفته', month:'این ماه', all:'همه زمان‌ها'}[reportPeriod];
 
@@ -242,11 +244,29 @@ function renderReportsBodyOnly(){
               <span class="rtp-rank">${idx+1}</span>
               <span class="rtp-info">
                 <span class="rtp-name">${esc(p.name)}</span>
-                <span class="rtp-qty">تعداد فروش: ${p.qty}</span>
+                <span class="rtp-qty">تعداد فروش: ${p.qty}${p.qtyUnit==='kg' ? ' کیلوگرم' : ''}</span>
               </span>
               <span class="rtp-amount">${toman(p.revenue)} ت</span>
             </div>`).join('')}
         </div>
+      ` : '<div class="empty" style="padding:8px 0;">فروشی ثبت نشده</div>'}
+    </div>
+
+    <div class="report-section report-top-products">
+      <h3>پرفروش‌ترین کالاها بر اساس ارزش فروش</h3>
+      ${topByValue.length ? `
+        <div class="rtp-list">
+          ${topByValue.map((p, idx)=>`
+            <div class="rtp-row">
+              <span class="rtp-rank">${idx+1}</span>
+              <span class="rtp-info">
+                <span class="rtp-name">${esc(p.name)}</span>
+                <span class="rtp-qty">تعداد فروش: ${p.qty}${p.qtyUnit==='kg' ? ' کیلوگرم' : ''}</span>
+              </span>
+              <span class="rtp-amount">${toman(p.revenue)} ت</span>
+            </div>`).join('')}
+        </div>
+        <div class="report-note">بر اساس مجموع مبلغ واقعی فروش هر کالا (qty × قیمت − تخفیف ردیف)؛ فقط ترتیب نمایش متفاوت است، منطق مبلغ همان منطق فعلی سیستم است.</div>
       ` : '<div class="empty" style="padding:8px 0;">فروشی ثبت نشده</div>'}
     </div>
 
